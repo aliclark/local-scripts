@@ -1,0 +1,4 @@
+#!/bin/sh
+
+scp anc505@milan.cs.york.ac.uk:~/$1 $2
+

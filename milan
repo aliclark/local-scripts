@@ -1,0 +1,4 @@
+#!/bin/sh
+
+ssh anc505@milan.cs.york.ac.uk $@
+

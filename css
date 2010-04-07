@@ -1,0 +1,3 @@
+
+cd ~/.wine/drive_c/Program\ Files/Steam && WINEDEBUG=-all wine steam -applaunch 240 -dxlevel 80 &
+

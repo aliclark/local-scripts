@@ -1,0 +1,3 @@
+#!/bin/bash
+
+wine /home/ali/.wine/drive_c/Program\ Files/Full\ Tilt\ Poker/FullTiltPoker.exe

@@ -1,0 +1,3 @@
+#!/bin/bash
+
+wine "C:\\Program Files\\Spotify\\spotify.exe" &

@@ -1,0 +1,12 @@
+#!/bin/bash
+
+myscript=/usr/local/bin/$1
+
+touch $myscript
+chmod +x $myscript
+
+if [ ! -s $myscript ]; then
+  echo -e "#!/bin/bash\n\n" >> $myscript
+fi
+
+nano $myscript

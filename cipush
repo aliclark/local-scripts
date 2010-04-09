@@ -1,0 +1,4 @@
+#!/bin/bash
+
+gcam $1
+gpush

@@ -1,6 +1,20 @@
 #!/bin/bash
 
+# User is advised to run `apt-get update` before this script
+# and `apt-get autoclean`, `apt-get autoremove` after it.
+
+# Written for debian squeeze
+
 desired=(
+
+vlc
+
+vorbis-tools toolame sox ffmpeg gstreamer0.8-misc
+
+lame lame-extras faad
+
+w32codecs
+libdvdcss2
 
 flashplugin-nonfree
 
@@ -20,12 +34,16 @@ gcc
 
 )
 
-# Manually install
+# Add to /etc/apt/sources.list: deb http://www.debian-multimedia.org testing main non-free
+# Needed for codecs
+if [ `grep "debian-multimedia.org" /etc/apt/sources.list` == "" ]
+then
+    echo 'echo "deb http://www.debian-multimedia.org testing main non-free" >> /etc/apt/sources.list'
+else
+    echo 'multimedia entry present'
+fi
 
-# Dropbox
-
-# Spotify
-
+# Check if packages exist, if not try to install them
 for package in ${desired[*]}
 do
     # Use status code of this command to check if package is installed
@@ -37,3 +55,15 @@ do
     fi
 done
 
+# Manual install:
+
+# Dropbox - todo, quite a long process here...
+
+# Spotify
+if [ ! -d ~/.wine/drive_c/Program\ Files/Spotify ]
+then
+    cd Desktop
+    wget "http://www.spotify.com/download/Spotify%20Installer.exe"
+    wine "./Spotify Installer.exe"
+    rm -f "./Spotify Installer.exe"
+fi

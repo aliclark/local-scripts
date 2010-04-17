@@ -7,49 +7,56 @@
 
 desired=(
 
+# Video playback
 vlc
 
-vorbis-tools toolame sox ffmpeg gstreamer0.8-misc
+# Codecs
+vorbis-tools toolame sox ffmpeg
 
-lame lame-extras faad
+lame faad
 
 w32codecs
 libdvdcss2
 
+# Flash
 flashplugin-nonfree
 
+# Windows applications
 wine
 
+# Text editing
 emacs emacs-goodies-el
 
+# Revision control
 git-core
 subversion
 
+# Interpreted languages
 gambc
 sbcl rlwrap
 ghc
 
+# C compilers
 clang
 gcc
+
+# Because I will inevitably want to change my partitions
+gparted
 
 )
 
 # Add to /etc/apt/sources.list: deb http://www.debian-multimedia.org testing main non-free
 # Needed for codecs
-if [ `grep "debian-multimedia.org" /etc/apt/sources.list` == "" ]
+if [ "$(grep 'debian-multimedia.org' /etc/apt/sources.list)" == "" ]
 then
-    echo 'echo "deb http://www.debian-multimedia.org testing main non-free" >> /etc/apt/sources.list'
-else
-    echo 'multimedia entry present'
+    echo "deb http://www.debian-multimedia.org testing main non-free" >> /etc/apt/sources.list
 fi
 
 # Check if packages exist, if not try to install them
 for package in ${desired[*]}
 do
-    # Use status code of this command to check if package is installed
-    dpkg -s $package >/dev/null 2>&1
-    # Do not put any commands in here, note $? will be trashed if you do.
-    if [ $? != 0 ]
+    # If not installed
+    if ! dpkg -s $package > /dev/null 2>&1
     then
         apt-get --yes install $package
     fi

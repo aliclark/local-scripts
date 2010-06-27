@@ -18,6 +18,9 @@ lame faad
 w32codecs
 libdvdcss2
 
+# Font
+msttcorefonts
+
 # Flash
 flashplugin-nonfree
 
@@ -40,8 +43,19 @@ ghc
 clang
 gcc
 
+gdb
+valgrind
+
 # Because I will inevitably want to change my partitions
 gparted
+
+ntpdate
+
+#tor privoxy
+
+htop
+
+nmap netcat tcpdump
 
 )
 
@@ -64,6 +78,8 @@ done
 
 # Manual install:
 
+# Skype
+
 # Dropbox - todo, quite a long process here...
 
 # Spotify
@@ -74,3 +90,5 @@ then
     wine "./Spotify Installer.exe"
     rm -f "./Spotify Installer.exe"
 fi
+
+# NoMachine

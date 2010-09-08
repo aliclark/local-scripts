@@ -18,6 +18,8 @@ lame faad
 w32codecs
 libdvdcss2
 
+youtube-dl
+
 # Font
 msttcorefonts
 

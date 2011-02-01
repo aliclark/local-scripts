@@ -44,6 +44,7 @@ from xml.dom.minidom import parseString
 
 # Todo
 # ----
+# > Support for multiple version and fixVersions
 # > Outupt comments on issues
 # > Error handling
 # > Test for login

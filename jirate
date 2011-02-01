@@ -10,36 +10,36 @@ from xml.dom.minidom import parseString
 #
 # Implemented
 # -----------
-# jira issue SA-1234
-# jira issuexml SA-1234
-# jira approve SA-1234 [comment]
+# jirate issue SA-1234
+# jirate issuexml SA-1234
+# jirate approve SA-1234 [comment]
 #
 # In scope
 # --------
-# jira investigate SA-1234 [comment]
-# jira investigatd SA-1234 [comment]
-# jira implement SA-1234 [comment]
-# jira implemented SA-1234 [comment]
-# jira disapprove SA-1234 [comment]
+# jirate investigate SA-1234 [comment]
+# jirate investigatd SA-1234 [comment]
+# jirate implement SA-1234 [comment]
+# jirate implemented SA-1234 [comment]
+# jirate disapprove SA-1234 [comment]
 #
-# jira comment SA-1234 comment
+# jirate comment SA-1234 comment
 #
-# jira attach SA-1234 filepath|URL [comment]
+# jirate attach SA-1234 filepath|URL [comment]
 #
-# jira webcreate SA  (opens URL for creating issues in web browser)
+# jirate webcreate SA  (opens URL for creating issues in web browser)
 #
-# jira filter 'My Active Issues' [-n 10]
-# jira filterxml 'My Active Issues' [-n 10]
+# jirate filter 'My Active Issues' [-n 10]
+# jirate filterxml 'My Active Issues' [-n 10]
 #
-# jira post URL postdata  (performs login, then does POST request)
+# jirate post URL postdata  (performs login, then does POST request)
 #
-# jira help
-# jira *anything else* -> jira help
+# jirate help
+# jirate *anything else* -> jirate help
 #
 # Not in scope
 # ------------
-# jira create SA (opens editor for editing an "issue spec")
-# jira update SA-1234 description 'bug description'
+# jirate create SA (opens editor for editing an "issue spec")
+# jirate update SA-1234 description 'bug description'
 #
 
 # Todo
@@ -75,20 +75,32 @@ disapproveAction = '171'
 
 fixedResolution = '1'
 
-def doLogin():
-    p = subprocess.Popen("wget -q -O - --save-cookies " + sessionFile + " --keep-session-cookies --post-data='os_username=" + jiraUser + "&os_password=" + jiraPass + "&os_cookie=true' " + loginUrl + " >/dev/null 2>/dev/null", shell=True)
-    sts = os.waitpid(p.pid, 0)[1]
+loggedIn = False
+
+def doLogin(continueTo=None):
+    return subprocess.Popen(["wget", "-q", "-O", "-", "--save-cookies", sessionFile, "--keep-session-cookies", "--post-data='os_username=" + jiraUser + "&os_password=" + jiraPass + "&os_cookie=true'", loginUrl], stdout=subprocess.PIPE).communicate()[0]
 
 def doPost(url, post):
+
+    # try the post action
+
+    if failed:
+        doLogin()
+        # repeat the post action attempt one more time
+    else:
+        return value
+
     p = subprocess.Popen("wget -q -O - --load-cookies " + sessionFile + " --post-data='" + post + "' " + url + " >/dev/null 2>/dev/null", shell=True)
     sts = os.waitpid(p.pid, 0)[1]
 
-def doLoginIfNecessary():
-    if True:
-        doLogin()
-
 def getPage(url):
-    return subprocess.Popen(["wget", "-q", "-O", "-", "--load-cookies", sessionFile, url], stdout=subprocess.PIPE).communicate()[0]
+    if not loggedIn:
+        return doLogin(url)
+    else:
+        rv = subprocess.Popen(["wget", "-q", "-O", "-", "--load-cookies", sessionFile, url], stdout=subprocess.PIPE).communicate()[0]
+        if False:
+            return doLogin(url)
+        return rv
 
 def getIssueXml(j):
     return getPage(jiraPath + "/si/jira.issueviews:issue-xml/" + j + "/" + j + ".xml")
@@ -214,6 +226,7 @@ def issueApproved(j, comment):
     item  = getIssueDocItem(j)
     keyId = getDocItemKeyId(getIssueDocItem(j))
 
+    # If we aren't able to lookup the IDs of every single fixVersion, we should fail
     if len(item.getElementsByTagName('fixVersion')) != 1:
         print 'ERROR: not enough fix versions!'
         sys.exit(1)
@@ -272,7 +285,6 @@ def getOutput():
     return rv
 
 def main():
-    doLoginIfNecessary()
     print getOutput()
 
 main()

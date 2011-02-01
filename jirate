@@ -165,27 +165,27 @@ def getIssueEssentials(j):
         #'title',
         #link
         #project
-        'summary',
         'component',
         'due',
         'version', 'fixVersion',
         'reporter', 'assignee',
         'created', 'updated'
-        'environment',
-        'description',
+        'environment'
         ]
 
     for i in range(len(tags)):
         s += dataTag(item, tags[i], 0, False)
-    if s != '':
-        s += '\n\n'
+
+    s += '\t' + dataItem(item, 'summary') + '\n\n'
 
     for i in range(len(lines)):
         tmp = dataLine(item, lines[i], 8)
         if tmp != '':
-            if lines[i] == 'description':
-                tmp = '\n' + tmp
             s += tmp + '\n'
+
+    tmp = dataItem(item, 'description')
+    if tmp != '':
+        s += '\ndescription:\n' + tmp + '\n'
 
     comments = item.getElementsByTagName('comment')
 

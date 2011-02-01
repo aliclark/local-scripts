@@ -5,56 +5,20 @@ import os
 import sys
 import subprocess
 import urllib
+import stat
 from xml.dom.minidom import parseString
 from HTMLParser import HTMLParser
-
-
-#
-# Implemented
-# -----------
-# jirate issue SA-1234
-# jirate issuexml SA-1234
-# jirate approve SA-1234 [comment]
-#
-# In scope
-# --------
-# jirate investigate SA-1234 [comment]
-# jirate investigatd SA-1234 [comment]
-# jirate implement SA-1234 [comment]
-# jirate implemented SA-1234 [comment]
-# jirate disapprove SA-1234 [comment]
-#
-# jirate comment SA-1234 comment
-#
-# jirate attach SA-1234 filepath|URL [comment]
-#
-# jirate webcreate SA  (opens URL for creating issues in web browser)
-#
-# jirate filter 'My Active Issues' [-n 10]
-# jirate filterxml 'My Active Issues' [-n 10]
-#
-# jirate post URL postdata  (performs login, then does POST request)
-#
-# jirate help
-# jirate *anything else* -> jirate help
-#
-# Not in scope
-# ------------
-# jirate create SA (opens editor for editing an "issue spec")
-# jirate update SA-1234 description 'bug description'
-#
 
 # Todo
 # ----
 # > Support for multiple version and fixVersions
 # > Error handling
-# > Test for login
+# > Try action before doing login
 # > Use urllib instead of wget
-# > Store cookies in user directory
 # > "Not modified" cacheing
 # > Work out fixVersions id
 
-jiratePath = '~/.jirate'
+jiratePath = os.path.expanduser('~/.jirate')
 jirateCookiePath = jiratePath + '/cookies.txt'
 
 jiraPath = None
@@ -77,6 +41,12 @@ disapproveAction = '171'
 fixedResolution = '1'
 
 loggedIn = False
+
+envExamples = {
+    'JIRATE_HOST': 'http://jira',
+    'JIRATE_USER': 'john.smith',
+    'JIRATE_PASS': 'hunter2'
+    }
 
 
 ### Library code
@@ -149,21 +119,15 @@ def removeEmpties(l):
 
 ### Low level procedures to GET and POST data
 
-def doLogin(continueTo=None):
-    global loggedIn
-
+def doLogin(continueUrl=None):
     return subprocess.Popen(["wget", "-q", "-O", "-", "--save-cookies", jirateCookiePath, "--keep-session-cookies", "--post-data='os_username=" + jiraUser + "&os_password=" + jiraPass + "&os_cookie=true'", loginUrl], stdout=subprocess.PIPE).communicate()[0]
 
 def doPost(url, post):
     global loggedIn
 
-    # try the post action
-
-    if failed:
+    if not loggedIn:
+        loggedIn = True
         doLogin()
-        # repeat the post action attempt one more time
-    else:
-        return value
 
     p = subprocess.Popen("wget -q -O - --load-cookies " + jirateCookiePath + " --post-data='" + post + "' " + url + " >/dev/null 2>/dev/null", shell=True)
     sts = os.waitpid(p.pid, 0)[1]
@@ -172,12 +136,10 @@ def getPage(url):
     global loggedIn
 
     if not loggedIn:
-        return doLogin(url)
-    else:
-        rv = subprocess.Popen(["wget", "-q", "-O", "-", "--load-cookies", jirateCookiePath, url], stdout=subprocess.PIPE).communicate()[0]
-        if False:
-            return doLogin(url)
-        return rv
+        loggedIn = True
+        return doLogin()
+
+    return subprocess.Popen(["wget", "-q", "-O", "-", "--load-cookies", jirateCookiePath, url], stdout=subprocess.PIPE).communicate()[0]
 
 
 ### Higher level data getters
@@ -387,13 +349,90 @@ def issueDisapproved(j, comment):
 
 ### Turn the arguments into some kind of data request / post
 
+def commandExample(c):
+    if c == None:
+        return '\n'
+    if c[1] == '':
+        return c[0] + '\n'
+    return c[0] + '\n\n\t' + c[1] + '\n\n'
+
+def getHelpText(problem):
+
+    commands = [
+        ('jirate issue    $issue',
+         'Prints a simple data output for the issue'),
+        ('jirate issuexml $issue',
+         'Prints the RSS XML for the issue'),
+        ('jirate approve     $issue [$comment]',
+         'Approve the issue, optionally supplying a comment')
+        ]
+    commandsTodo = [
+        ('jirate investigate $issue [$comment]', ''),
+        ('jirate investigatd $issue [$comment]', ''),
+        ('jirate implement   $issue [$comment]', ''),
+        ('jirate implemented $issue [$comment]', ''),
+        ('jirate disapprove  $issue [$comment]', ''),
+         None,
+        ('jirate comment $issue $comment', ''),
+        ('jirate attach  $issue ($filepath | $url) [$comment]', ''),
+         None,
+        ('jirate filter    $filter [-n 10]', ''),
+        ('jirate filterxml $filter [-n 10]', ''),
+         None,
+        ('jirate webcreate $project  (opens URL for creating issues in web browser)', ''),
+        ('jirate post $url $postdata  (performs login, then does POST request)', '')
+        ]
+    commandsOutOfScope = [
+        ('jirate create $project (opens editor for editing an "issue spec")', ''),
+        ('jirate update $issue $field $value', '')
+        ]
+
+    problemStr = ''
+    if problem != None:
+        problemStr = '\nProblem: ' + problem + '\n'
+
+    return (problemStr + '\n\tjirate help\n\n'
+            'jirate is a command-line tool to interface with JIRA.\n'
+            'It is not intended to cover all uses of JIRA, but to perform common tasks simply and efficiently.\n'
+            'Therefore this script will not completely replace your current method of using JIRA,\n'
+            'but should reduce it to sane levels of usage.\n'
+            'For a more complete JIRA command line tool, try the JIRA Command Line Interface.\n\n'
+            'USAGE:\n\n' +
+            ''.join(map(commandExample, commands)) + 
+            '\nTODO:\n\n' +
+            ''.join(map(commandExample, commandsTodo)) + 
+            '\nOUT OF SCOPE:\n\n' +
+            ''.join(map(commandExample, commandsOutOfScope)))
+
+
 def getOutput():
     rv = ''
-    action = lookor(sys.argv, 1, 'noop')
+    problem = None
+    action  = lookor(sys.argv, 1, None)
+    argMins = {
+        'issue': 1,
+        'issuexml': 1,
+        'active': 0,
+        'approve': 1,
+        'disapprove': 1,
+        'post': 2
+        }
 
-    if action == 'noop':
-        rv = ''
-    elif action == 'issue':
+    if action == None:
+        action = 'help'
+        problem = 'Please supply an action to perform'
+
+    def enoughArgs(action):
+        if (len(sys.argv) - 2) < argMins[action]:
+            return False
+        return True
+
+    if (action in argMins) and not enoughArgs(action):
+        problem = ('Not enough args supplied for action "' + action +
+                   '" (you supplied ' + str(len(sys.argv) - 2) + ' but it needs ' + str(argMins[action]))
+        action  = 'help'
+
+    if action == 'issue':
         rv = getIssueEssentials(sys.argv[2])
     elif action == 'issuexml':
         rv = getIssueXml(sys.argv[2])
@@ -401,28 +440,54 @@ def getOutput():
         rv = getActiveTitles()
     elif action == 'approve':
         issueApproved(sys.argv[2], lookor(sys.argv, 3, ''))
-    elif action == 'approve':
+    elif action == 'disapprove':
         issueDisapproved(sys.argv[2], lookor(sys.argv, 3, ''))
+    elif action == 'post':
+        doPost(sys.argv[2], sys.argv[3])
+    elif action == 'help':
+        rv = getHelpText(problem)
+    else:
+        problem = 'Unknown command "' + action + '"'
+        rv = getHelpText(problem)
 
     return rv
 
-def main():
+def envVarNotPresent(v):
+    return not v in os.environ
+
+def setupVars():
     global jiraPath, jiraUser, jiraPass
     global loginUrl, activeXmlUrl
 
-    jiraPath = os.environ['JIRATE_HOST']
-    jiraUser = os.environ['JIRATE_USER']
-    jiraPass = os.environ['JIRATE_PASS']
+    def makeExample(x):
+        return 'eg. ' + x + '=' + envExamples[x]
+
+    needed = ['JIRATE_HOST', 'JIRATE_USER', 'JIRATE_PASS']
+
+    notFound = filter(envVarNotPresent, needed)
+
+    if len(notFound) != 0:
+        fail('Required environment variables not set: ' + ', '.join(notFound) +
+             '\n' + '\n'.join(map(makeExample, notFound)))
+
+    jiraPath = os.environ[needed[0]]
+    jiraUser = os.environ[needed[1]]
+    jiraPass = os.environ[needed[2]]
 
     loginUrl     = jiraPath + '/login.jsp'
     activeXmlUrl = jiraPath + "/sr/jira.issueviews:searchrequest-xml/" + activeId + "/SearchRequest-" + activeId + ".xml?tempMax=" + activeTempMax
 
+def setupDirs():
     if not os.path.isdir(jiratePath):
         os.mkdir(jiratePath, 0700)
 
     if not os.path.isfile(jirateCookiePath):
         open(jirateCookiePath, 'w').close()
-    os.chmod(jiraCookiePath, stat.S_IREAD | stat.S_IWRITE)
+    os.chmod(jirateCookiePath, stat.S_IREAD | stat.S_IWRITE)
+
+def main():
+    setupVars()
+    setupDirs()
 
     text = getOutput()
 

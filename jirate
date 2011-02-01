@@ -203,7 +203,7 @@ def getActiveTitles():
 
     for i in range(len(items)):
         item = items[i]
-        s += dataTag(item, 'type') + dataTag(item, 'priority') + dataTag(item, 'status') + dataTag(item, 'key') + dataItem(item, 'summary') + '\n'
+        s += dataTag(item, 'key') + dataTag(item, 'type') + dataTag(item, 'priority') + dataTag(item, 'status') + dataItem(item, 'summary') + '\n'
 
     return s.strip()
 

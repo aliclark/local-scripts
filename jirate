@@ -6,6 +6,8 @@ import sys
 import subprocess
 import urllib
 from xml.dom.minidom import parseString
+from HTMLParser import HTMLParser
+
 
 #
 # Implemented
@@ -45,7 +47,6 @@ from xml.dom.minidom import parseString
 # Todo
 # ----
 # > Support for multiple version and fixVersions
-# > Outupt comments on issues
 # > Error handling
 # > Test for login
 # > Use urllib instead of wget
@@ -53,12 +54,12 @@ from xml.dom.minidom import parseString
 # > "Not modified" cacheing
 # > Work out fixVersions id
 
-jiraPath = os.environ['JIRATE_HOST']
-jiraUser = os.environ['JIRATE_USER']
-jiraPass = os.environ['JIRATE_PASS']
+jiratePath = '~/.jirate'
+jirateCookiePath = jiratePath + '/cookies.txt'
 
-# TODO: move to ~/.jirate/
-sessionFile = '/tmp/jirate_unsafecookiesfile'
+jiraPath = None
+jiraUser = None
+jiraPass = None
 
 # TODO: programmatically determine these values
 versionIds = { 'jade': '10954' }
@@ -67,8 +68,8 @@ activeId = '10041'
 # Not sure what this is
 activeTempMax = '1000'
 
-loginUrl     = jiraPath + '/login.jsp'
-activeXmlUrl = jiraPath + "/sr/jira.issueviews:searchrequest-xml/" + activeId + "/SearchRequest-" + activeId + ".xml?tempMax=" + activeTempMax
+loginUrl     = None
+activeXmlUrl = None
 
 approveAction    = '161'
 disapproveAction = '171'
@@ -77,10 +78,84 @@ fixedResolution = '1'
 
 loggedIn = False
 
+
+### Library code
+
+def pad(s, n):
+    rv = s
+    while len(rv) < n:
+        rv += ' '
+    return rv
+
+def lookor(h, k, v):
+    try:
+        return h[k]
+    except:
+        return v
+
+def fail(m):
+    print m
+    sys.exit(1)
+
+
+class MLStripper(HTMLParser):
+    def __init__(self):
+        self.reset()
+        self.fed = []
+    def handle_data(self, d):
+        self.fed.append(d)
+    def get_data(self):
+        return ''.join(self.fed)
+
+def strip_tags(html):
+    s = MLStripper()
+    s.feed(html)
+    return s.get_data()
+
+def tidyData(x):
+    return strip_tags(string.replace(x, '<br/>\n', '')).trim()
+
+
+# Adding contraints and unwrapping of data lists
+
+def checkCount(minN=None, maxN=None):
+    def checker(x, s='value'):
+        l = len(x)
+
+        if minN != None and l < minN:
+            fail(s + ': has ' + l + ' items, should have minimum ' + minN)
+
+        if maxN != None and l > maxN:
+            fail(s + ': has ' + l + ' items, should have maximum ' + maxN)
+
+        if maxN in [0, 1]:
+            if l == 0:
+                return None
+            return x[0]
+
+        return x
+
+    return checker
+
+zero       = checkCount(0, 0)
+optional   = checkCount(0, 1)
+one        = checkCount(1, 1)
+oneToMany  = checkCount(1)
+
+
+def removeEmpties(l):
+    return filter(lambda x: x != '', l)
+
+
+### Low level procedures to GET and POST data
+
 def doLogin(continueTo=None):
-    return subprocess.Popen(["wget", "-q", "-O", "-", "--save-cookies", sessionFile, "--keep-session-cookies", "--post-data='os_username=" + jiraUser + "&os_password=" + jiraPass + "&os_cookie=true'", loginUrl], stdout=subprocess.PIPE).communicate()[0]
+    global loggedIn
+
+    return subprocess.Popen(["wget", "-q", "-O", "-", "--save-cookies", jirateCookiePath, "--keep-session-cookies", "--post-data='os_username=" + jiraUser + "&os_password=" + jiraPass + "&os_cookie=true'", loginUrl], stdout=subprocess.PIPE).communicate()[0]
 
 def doPost(url, post):
+    global loggedIn
 
     # try the post action
 
@@ -90,23 +165,31 @@ def doPost(url, post):
     else:
         return value
 
-    p = subprocess.Popen("wget -q -O - --load-cookies " + sessionFile + " --post-data='" + post + "' " + url + " >/dev/null 2>/dev/null", shell=True)
+    p = subprocess.Popen("wget -q -O - --load-cookies " + jirateCookiePath + " --post-data='" + post + "' " + url + " >/dev/null 2>/dev/null", shell=True)
     sts = os.waitpid(p.pid, 0)[1]
 
 def getPage(url):
+    global loggedIn
+
     if not loggedIn:
         return doLogin(url)
     else:
-        rv = subprocess.Popen(["wget", "-q", "-O", "-", "--load-cookies", sessionFile, url], stdout=subprocess.PIPE).communicate()[0]
+        rv = subprocess.Popen(["wget", "-q", "-O", "-", "--load-cookies", jirateCookiePath, url], stdout=subprocess.PIPE).communicate()[0]
         if False:
             return doLogin(url)
         return rv
+
+
+### Higher level data getters
 
 def getIssueXml(j):
     return getPage(jiraPath + "/si/jira.issueviews:issue-xml/" + j + "/" + j + ".xml")
 
 def getActiveXml():
     return getPage(activeXmlUrl)
+
+
+### Low level data item getters
 
 def xmlDocItems(doc):
     return doc.getElementsByTagName('item')
@@ -115,69 +198,91 @@ def xmlItems(s):
     return xmlDocItems(parseString(s))
 
 def getIssueDocItem(j):
-    return xmlItems(getIssueXml(j))[0]
+    return one(xmlItems(getIssueXml(j)))
 
-def getDocItemKeyId(i):
-    return i.getElementsByTagName('key')[0].getAttribute('id')
 
-def dataItem(item, k):
-    node = item.getElementsByTagName(k)
-    if len(node) == 0:
-        return ''
-    node = node[0].childNodes
-    if len(node) == 0:
-        return ''
-    node = node[0]
-    if node.nodeType != node.TEXT_NODE:
-        return ''
-    return string.replace(node.data, '<br/>\n', '') # todo: use strip tags instead
+### Higher level data item getters
 
-def dataLine(item, k, n=0, useTabs=True):
-    if useTabs:
-        t = '\t'
-    else:
-        t = ' '
-    data = dataItem(item, k)
-    if data == '':
-        return '';
-    return pad(k + ':', n)  + t + data
+def dataItems(item, tag, attr=None):
+    rv = []
+    nodes = item.getElementsByTagName(tag)
+    node = None
+    chNode = None
+    value = ''
 
-def pad(s, n):
-    rv = s
-    while len(rv) < n:
-        rv += ' '
+    for i in range(len(nodes)):
+        node = nodes[i]
+        if attr != None:
+            rv.append(node.getAttribute(attr))
+        else:
+            if len(node.childNodes) != 1:
+                fail(tag + ' has too many childNodes')
+
+            chNode = node.childNodes[0]
+
+            if chNode.nodeType != chNode.TEXT_NODE:
+                fail(tag + ' child is not a text node')
+
+            value = tidyData(chNode.data)
+
+            if value != '':
+                rv.append(value)
+
     return rv
 
-def dataDual(item, k1, k2):
-    s = ''
-    v1 = dataLine(item, k1, 0, False)
-    if v1 != '':
-        s += '[' + v1 + '] '
-    v2 = dataLine(item, k2, 0, False)
-    if v2 != '':
-        s += '[' + v2 + ']'
-    if s != '':
-        s += '\n'
-    return s
+def getDocItemKeyId(i):
+    return one(dataItems(i, 'key', 'id'))
 
-def dataTag(item, k, n=8, useTabs=True):
-    if useTabs:
-        t = '\t'
+
+### Converting data item values to fancy string representations
+
+def dataLines(item, k, n=0, useTabs=False):
+
+    def dataLine(l):
+        if useTabs:
+            t = '\t'
+        else:
+            t = ' '
+        return pad(k + ':', n + 1)  + t + l
+
+    datas = dataItems(item, k)
+    return '\n'.join(map(dataLine, datas))
+
+def issueTagLine(item, fullp):
+    outer = []
+    tags = [ 'key', 'type', 'priority', 'status' ]
+
+    if fullp:
+        tags.append('resolution')
+
+    if fullp:
+        joins = ' '
     else:
-        t = ' '
-    data = dataItem(item, k)
-    if data == '':
-        return '';
-    return pad('[' + data + ']', n) + t
+        joins = '\t'
 
-def getIssueEssentials(j):
-    s = ''
-    item = getIssueDocItem(j)
-    tags = [ 'key', 'type', 'priority', 'status', 'resolution' ]
+    def tagVal(t): return optional(dataItems(item, t))
+    def tagStr(t): return pad('[' + data + ']', maxn + 2)
+
+    innerVals = map(tagVal, tags)
+    innerValsLeft = removeEmpties(innerVals)
+    maxn = max(map(len, innerValsLeft))
+
+    outer.append(joins.join(map(tagStr, innerValsLeft)))
+
+    summary = optional(dataItems(item, 'summary'))
+    if summary != None:
+        outer.append(summary)
+
+    return '\t'.join(outer)
+
+def issueSmallTagLine(item):
+    return issueTagLine(item, False)
+
+def issueFullTagLine(item):
+    return issueTagLine(item, True)
+
+def issueOneLinerFields(item):
     lines = [
-        #'title',
-        #link
-        #project
         'component',
         'due',
         'version', 'fixVersion',
@@ -185,60 +290,80 @@ def getIssueEssentials(j):
         'created', 'updated'
         'environment'
         ]
+    maxn = max(map(len, lines))
 
-    for i in range(len(tags)):
-        s += dataTag(item, tags[i], 0, False)
+    def getLines(li):
+        return dataLines(item, li, maxn)
 
-    s += '\t' + dataItem(item, 'summary') + '\n\n'
+    vals = map(getLines, lines)
+    valsLeft = removeEmpties(vals)
 
-    for i in range(len(lines)):
-        tmp = dataLine(item, lines[i], 8)
-        if tmp != '':
-            s += tmp + '\n'
+    return '\n'.join(valsLeft)
 
-    tmp = dataItem(item, 'description')
-    if tmp != '':
-        s += '\ndescription:\n' + tmp + '\n'
+def issueDescriptionPart(item):
+    tag = 'description'
+    tmp = optional(dataItems(item, tag))
 
-    comments = item.getElementsByTagName('comment')
+    if tmp == None:
+        return ''
 
-    for i in range(len(comments)):
-        comment = comments[i]
+    return tag + ':\n' + tmp
 
-        s += '\n[comment author: "' + comment.getAttribute('author') + '", created: "' + comment.getAttribute('created') + '"]\n'
-        s += comment.childNodes[0].data + '\n'
+def issueCommentsPart(item):
+    tag = 'comment'
+    comments = item.getElementsByTagName(tag)
 
-    return '\n' + s
+    def getComment(comment):
+        return ('[' + tag + ' author: "' + comment.getAttribute('author') + '", created: "' + comment.getAttribute('created') + '"]\n' +
+                tidyData(comment.childNodes[0].data))
+
+    return '\n\n'.join(map(getComment, comments))
+
+
+### Full data page builders
+
+def getIssueEssentials(j):
+    item = getIssueDocItem(j)
+    s = None
+    getters = [issueFullTagLine, issueOneLinerFields, issueDescriptionPart, issueCommentsPart]
+    parts = map(lambda f: f(item), getters)
+    partsLeft = removeEmpties(parts)
+
+    if len(partsLeft) == 0:
+        return ''
+
+    s = '\n\n'.join(partsLeft)
+    return '\n' + s + '\n'
 
 def getActiveTitles():
-    s = ''
     items = xmlItems(getActiveXml())
+    return '\n'.join(map(issueSmallTagLine, items))
 
-    for i in range(len(items)):
-        item = items[i]
-        s += dataTag(item, 'key') + dataTag(item, 'type') + dataTag(item, 'priority') + dataTag(item, 'status') + dataItem(item, 'summary') + '\n'
 
-    return s.strip()
+### Post actions
 
 def issueApproved(j, comment):
+
+    def getFixVersionId(f):
+        v = lookor(versionIds, f, None)
+        if v == None:
+            fail('Unknown fixVersion ' + f + ' - please insert the id in the versionIds table')
+        return v
 
     # first we get the page so we know the issue id
     item  = getIssueDocItem(j)
     keyId = getDocItemKeyId(getIssueDocItem(j))
 
+    fixVs = dataItems(item, 'fixVersion')
+
     # If we aren't able to lookup the IDs of every single fixVersion, we should fail
-    if len(item.getElementsByTagName('fixVersion')) != 1:
-        print 'ERROR: not enough fix versions!'
-        sys.exit(1)
+    fixVids = map(getFixVersionId, fixVs)
 
-    fixv = dataItem(item, 'fixVersion')
-    fixid = lookor(versionIds, fixv, '')
+    if len(fixVids) != 1:
+        fail('FIXME: script currently doesn\'t know what to do when number of fixVersions is not 1.\n' +
+             'please fix the code and submit it to maintainer')
 
-    if fixid == '':
-        print 'ERROR: unrecognised fix version!'
-        sys.exit(1)
-
-    post = 'resolution=1&fixVersions=' + fixid + '&assignee=' + jiraUser + '&comment=' + urllib.quote(comment, '') + '&commentLevel=&action=' + approveAction + '&id=' + keyId + '&viewIssueKey=&Approved=Approved'
+    post = 'resolution=1&fixVersions=' + ','.join(fixVids) + '&assignee=' + jiraUser + '&comment=' + urllib.quote(comment, '') + '&commentLevel=&action=' + approveAction + '&id=' + keyId + '&viewIssueKey=&Approved=Approved'
 
     doPost(jiraPath + '/secure/CommentAssignIssue.jspa', post)
 
@@ -259,11 +384,8 @@ def issueDisapproved(j, comment):
 
     doPost(jiraPath + '/secure/CommentAssignIssue.jspa', post)
 
-def lookor(h, k, v):
-    try:
-        return h[k]
-    except:
-        return v
+
+### Turn the arguments into some kind of data request / post
 
 def getOutput():
     rv = ''
@@ -285,6 +407,26 @@ def getOutput():
     return rv
 
 def main():
-    print getOutput()
+    global jiraPath, jiraUser, jiraPass
+    global loginUrl, activeXmlUrl
+
+    jiraPath = os.environ['JIRATE_HOST']
+    jiraUser = os.environ['JIRATE_USER']
+    jiraPass = os.environ['JIRATE_PASS']
+
+    loginUrl     = jiraPath + '/login.jsp'
+    activeXmlUrl = jiraPath + "/sr/jira.issueviews:searchrequest-xml/" + activeId + "/SearchRequest-" + activeId + ".xml?tempMax=" + activeTempMax
+
+    if not os.path.isdir(jiratePath):
+        os.mkdir(jiratePath, 0700)
+
+    if not os.path.isfile(jirateCookiePath):
+        open(jirateCookiePath, 'w').close()
+    os.chmod(jiraCookiePath, stat.S_IREAD | stat.S_IWRITE)
+
+    text = getOutput()
+
+    if text != '':
+        print text
 
 main()

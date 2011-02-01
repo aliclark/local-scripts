@@ -17,6 +17,7 @@ from HTMLParser import HTMLParser
 # > Use urllib instead of wget
 # > "Not modified" cacheing
 # > Work out fixVersions id
+# > Ensure actions are properly escaped, especially for 'post' and 'filter'
 
 jiratePath = os.path.expanduser('~/.jirate')
 jirateCookiePath = jiratePath + '/cookies.txt'
@@ -151,7 +152,7 @@ def getActiveXml():
     return getPage(activeXmlUrl)
 
 
-### Low level data item getters
+### Low level data item extraction
 
 def xmlDocItems(doc):
     return doc.getElementsByTagName('item')
@@ -163,7 +164,7 @@ def getIssueDocItem(j):
     return one(xmlItems(getIssueXml(j)))
 
 
-### Higher level data item getters
+### Higher level data item extraction
 
 def dataItems(item, tag, attr=None):
     rv = []
@@ -282,7 +283,7 @@ def issueCommentsPart(item):
     return '\n\n'.join(map(getComment, comments))
 
 
-### Full data page builders
+### Full page outputs of fancy data strings
 
 def getIssueEssentials(j):
     item = getIssueDocItem(j)
@@ -347,7 +348,7 @@ def issueDisapproved(j, comment):
     doPost(jiraPath + '/secure/CommentAssignIssue.jspa', post)
 
 
-### Turn the arguments into some kind of data request / post
+### Help text creation
 
 def commandExample(c):
     if c == None:
@@ -405,6 +406,8 @@ def getHelpText(problem):
             ''.join(map(commandExample, commandsOutOfScope)))
 
 
+### Turn the arguments into some kind of data request / post
+
 def getOutput():
     rv = ''
     problem = None
@@ -452,6 +455,9 @@ def getOutput():
 
     return rv
 
+
+### Set up global variables for config items host, user, and pass
+
 def envVarNotPresent(v):
     return not v in os.environ
 
@@ -477,6 +483,9 @@ def setupVars():
     loginUrl     = jiraPath + '/login.jsp'
     activeXmlUrl = jiraPath + "/sr/jira.issueviews:searchrequest-xml/" + activeId + "/SearchRequest-" + activeId + ".xml?tempMax=" + activeTempMax
 
+
+### Setup up the cookie file
+
 def setupDirs():
     if not os.path.isdir(jiratePath):
         os.mkdir(jiratePath, 0700)
@@ -484,6 +493,7 @@ def setupDirs():
     if not os.path.isfile(jirateCookiePath):
         open(jirateCookiePath, 'w').close()
     os.chmod(jirateCookiePath, stat.S_IREAD | stat.S_IWRITE)
+
 
 def main():
     setupVars()

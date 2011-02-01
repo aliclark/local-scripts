@@ -183,7 +183,17 @@ def getIssueEssentials(j):
     for i in range(len(lines)):
         tmp = dataLine(item, lines[i], 8)
         if tmp != '':
+            if lines[i] == 'description':
+                tmp = '\n' + tmp
             s += tmp + '\n'
+
+    comments = item.getElementsByTagName('comment')
+
+    for i in range(len(comments)):
+        comment = comments[i]
+
+        s += '\n[comment author: "' + comment.getAttribute('author') + '", created: "' + comment.getAttribute('created') + '"]\n'
+        s += comment.childNodes[0].data + '\n'
 
     return '\n' + s
 

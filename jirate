@@ -1,0 +1,267 @@
+#!/usr/bin/python
+
+import string
+import os
+import sys
+import subprocess
+import urllib
+from xml.dom.minidom import parseString
+
+#
+# Implemented
+# -----------
+# jira issue SA-1234
+# jira issuexml SA-1234
+# jira approve SA-1234 [comment]
+#
+# In scope
+# --------
+# jira investigate SA-1234 [comment]
+# jira investigatd SA-1234 [comment]
+# jira implement SA-1234 [comment]
+# jira implemented SA-1234 [comment]
+# jira disapprove SA-1234 [comment]
+#
+# jira comment SA-1234 comment
+#
+# jira attach SA-1234 filepath|URL [comment]
+#
+# jira webcreate SA  (opens URL for creating issues in web browser)
+#
+# jira filter 'My Active Issues' [-n 10]
+# jira filterxml 'My Active Issues' [-n 10]
+#
+# jira post URL postdata  (performs login, then does POST request)
+#
+# jira help
+# jira *anything else* -> jira help
+#
+# Not in scope
+# ------------
+# jira create SA (opens editor for editing an "issue spec")
+# jira update SA-1234 description 'bug description'
+#
+
+# Todo
+# ----
+# > Outupt comments on issues
+# > Error handling
+# > Test for login
+# > Use urllib instead of wget
+# > Store cookies in user directory
+# > "Not modified" cacheing
+# > Work out fixVersions id
+
+jiraPath = os.environ['JIRATE_HOST']
+jiraUser = os.environ['JIRATE_USER']
+jiraPass = os.environ['JIRATE_PASS']
+
+# TODO: move to ~/.jirate/
+sessionFile = '/tmp/jirate_unsafecookiesfile'
+
+# TODO: programmatically determine these values
+versionIds = { 'jade': '10954' }
+activeId = '10041'
+
+# Not sure what this is
+activeTempMax = '1000'
+
+loginUrl     = jiraPath + '/login.jsp'
+activeXmlUrl = jiraPath + "/sr/jira.issueviews:searchrequest-xml/" + activeId + "/SearchRequest-" + activeId + ".xml?tempMax=" + activeTempMax
+
+approveAction    = '161'
+disapproveAction = '171'
+
+fixedResolution = '1'
+
+def doLogin():
+    p = subprocess.Popen("wget -q -O - --save-cookies " + sessionFile + " --keep-session-cookies --post-data='os_username=" + jiraUser + "&os_password=" + jiraPass + "&os_cookie=true' " + loginUrl + " >/dev/null 2>/dev/null", shell=True)
+    sts = os.waitpid(p.pid, 0)[1]
+
+def doPost(url, post):
+    p = subprocess.Popen("wget -q -O - --load-cookies " + sessionFile + " --post-data='" + post + "' " + url + " >/dev/null 2>/dev/null", shell=True)
+    sts = os.waitpid(p.pid, 0)[1]
+
+def doLoginIfNecessary():
+    if True:
+        doLogin()
+
+def getPage(url):
+    return subprocess.Popen(["wget", "-q", "-O", "-", "--load-cookies", sessionFile, url], stdout=subprocess.PIPE).communicate()[0]
+
+def getIssueXml(j):
+    return getPage(jiraPath + "/si/jira.issueviews:issue-xml/" + j + "/" + j + ".xml")
+
+def getActiveXml():
+    return getPage(activeXmlUrl)
+
+def xmlDocItems(doc):
+    return doc.getElementsByTagName('item')
+
+def xmlItems(s):
+    return xmlDocItems(parseString(s))
+
+def getIssueDocItem(j):
+    return xmlItems(getIssueXml(j))[0]
+
+def getDocItemKeyId(i):
+    return i.getElementsByTagName('key')[0].getAttribute('id')
+
+def dataItem(item, k):
+    node = item.getElementsByTagName(k)
+    if len(node) == 0:
+        return ''
+    node = node[0].childNodes
+    if len(node) == 0:
+        return ''
+    node = node[0]
+    if node.nodeType != node.TEXT_NODE:
+        return ''
+    return string.replace(node.data, '<br/>\n', '') # todo: use strip tags instead
+
+def dataLine(item, k, n=0, useTabs=True):
+    if useTabs:
+        t = '\t'
+    else:
+        t = ' '
+    data = dataItem(item, k)
+    if data == '':
+        return '';
+    return pad(k + ':', n)  + t + data
+
+def pad(s, n):
+    rv = s
+    while len(rv) < n:
+        rv += ' '
+    return rv
+
+def dataDual(item, k1, k2):
+    s = ''
+    v1 = dataLine(item, k1, 0, False)
+    if v1 != '':
+        s += '[' + v1 + '] '
+    v2 = dataLine(item, k2, 0, False)
+    if v2 != '':
+        s += '[' + v2 + ']'
+    if s != '':
+        s += '\n'
+    return s
+
+def dataTag(item, k, n=8, useTabs=True):
+    if useTabs:
+        t = '\t'
+    else:
+        t = ' '
+    data = dataItem(item, k)
+    if data == '':
+        return '';
+    return pad('[' + data + ']', n) + t
+
+def getIssueEssentials(j):
+    s = ''
+    item = getIssueDocItem(j)
+    tags = [ 'key', 'type', 'priority', 'status', 'resolution' ]
+    lines = [
+        #'title',
+        #link
+        #project
+        'summary',
+        'component',
+        'due',
+        'version', 'fixVersion',
+        'reporter', 'assignee',
+        'created', 'updated'
+        'environment',
+        'description',
+        ]
+
+    for i in range(len(tags)):
+        s += dataTag(item, tags[i], 0, False)
+    if s != '':
+        s += '\n\n'
+
+    for i in range(len(lines)):
+        tmp = dataLine(item, lines[i], 8)
+        if tmp != '':
+            s += tmp + '\n'
+
+    return '\n' + s
+
+def getActiveTitles():
+    s = ''
+    items = xmlItems(getActiveXml())
+
+    for i in range(len(items)):
+        item = items[i]
+        s += dataTag(item, 'type') + dataTag(item, 'priority') + dataTag(item, 'status') + dataTag(item, 'key') + dataItem(item, 'summary') + '\n'
+
+    return s.strip()
+
+def issueApproved(j, comment):
+
+    # first we get the page so we know the issue id
+    item  = getIssueDocItem(j)
+    keyId = getDocItemKeyId(getIssueDocItem(j))
+
+    if len(item.getElementsByTagName('fixVersion')) != 1:
+        print 'ERROR: not enough fix versions!'
+        sys.exit(1)
+
+    fixv = dataItem(item, 'fixVersion')
+    fixid = lookor(versionIds, fixv, '')
+
+    if fixid == '':
+        print 'ERROR: unrecognised fix version!'
+        sys.exit(1)
+
+    post = 'resolution=1&fixVersions=' + fixid + '&assignee=' + jiraUser + '&comment=' + urllib.quote(comment, '') + '&commentLevel=&action=' + approveAction + '&id=' + keyId + '&viewIssueKey=&Approved=Approved'
+
+    doPost(jiraPath + '/secure/CommentAssignIssue.jspa', post)
+
+def issueDisapproved(j, comment):
+
+    # first we get the page so we know the issue id
+    item  = getIssueDocItem(j)
+    keyId = getDocItemKeyId(getIssueDocItem(j))
+
+    assignee = ''
+
+    # need to fix assignee
+
+    post = 'assignee=' + assignee + '&comment=' + urllib.quote(comment, '') + '&commentLevel=&action=' + disapproveAction + '&id=' + keyId + '&viewIssueKey=&Disapproved=Disapproved'
+
+    print post
+    return
+
+    doPost(jiraPath + '/secure/CommentAssignIssue.jspa', post)
+
+def lookor(h, k, v):
+    try:
+        return h[k]
+    except:
+        return v
+
+def getOutput():
+    rv = ''
+    action = lookor(sys.argv, 1, 'noop')
+
+    if action == 'noop':
+        rv = ''
+    elif action == 'issue':
+        rv = getIssueEssentials(sys.argv[2])
+    elif action == 'issuexml':
+        rv = getIssueXml(sys.argv[2])
+    elif action == 'active':
+        rv = getActiveTitles()
+    elif action == 'approve':
+        issueApproved(sys.argv[2], lookor(sys.argv, 3, ''))
+    elif action == 'approve':
+        issueDisapproved(sys.argv[2], lookor(sys.argv, 3, ''))
+
+    return rv
+
+def main():
+    doLoginIfNecessary()
+    print getOutput()
+
+main()

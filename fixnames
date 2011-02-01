@@ -1,0 +1,14 @@
+#!/bin/sh
+
+dir=$1
+
+if [ "$dir" = "" ]; then
+   dir=./*
+fi
+
+for f in $dir; do
+    newname=`nicename "$f"`
+    if [ "$newname" != "$f" ]; then
+        mv "$f" "$newname"
+    fi
+done

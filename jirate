@@ -423,7 +423,7 @@ def getHelpText(problem):
         ('jirate issue    $issue',
          'Prints a simple data output for the issue'),
         ('jirate issuexml $issue',
-         'Prints the RSS XML for the issue'),
+         'Prints the RSS XML for the issue. This is an alias for "jirate get /si/jira.issueviews:issue-xml/${issue}/${issue}.xml"'),
         None,
         ('jirate approve     $issue [$comment]',
          'Approve the issue, optionally supplying a comment'),
@@ -433,6 +433,15 @@ def getHelpText(problem):
          '\teg. jirate post /secure/CommentAssignIssue.jspa assignee=john.smith&Disapproved=Disapproved& ...and so on...')
         ]
     commandsTodo = [
+        ('jirate get $url',
+         'Ensures login, then does a GET request to the page,\n'
+         '\teg. jirate get /si/jira.issueviews:issue-xml/JOB-101/JOB-101.xml'),
+        None,
+        ('jirate fields $issue',
+         'List all of the element tag names that an issue has, one per line, with duplicates if an element occurs multiple times'),
+        ('jirate values $issue $field',
+         'Print the values of all elements in the issue with name $field. One per line, possibly including blank lines. If the value contains a new line, it is replaced with the text "\n" (minus quotes), other "\" chars become "\\"'),
+        None,
         ('jirate investigate $issue [$comment]', ''),
         ('jirate investigatd $issue [$comment]', ''),
         ('jirate implement   $issue [$comment]', ''),
@@ -445,11 +454,13 @@ def getHelpText(problem):
         ('jirate filter    $filter [-n 10]', ''),
         ('jirate filterxml $filter [-n 10]', ''),
         None,
+        ('jirate search    $search [-n 10]', ''),
+        ('jirate searchxml $search [-n 10]', ''),
+        None,
         ('jirate webcreate $project',
-         'Opens the URL for creating issues for the project in a web browser')
-        ]
-    commandsOutOfScope = [
+         'Opens the URL for creating issues for the project in a web browser'),
         ('jirate create $project (opens editor for editing an "issue spec")', ''),
+        None,
         ('jirate update $issue $field $value', '')
         ]
 
@@ -466,9 +477,7 @@ def getHelpText(problem):
             'USAGE:\n\n' +
             ''.join(map(commandExample, commands)) + 
             '\nTODO:\n\n' +
-            ''.join(map(commandExample, commandsTodo)) + 
-            '\nOUT OF SCOPE:\n\n' +
-            ''.join(map(commandExample, commandsOutOfScope)))
+            ''.join(map(commandExample, commandsTodo))
 
 
 ### Turn the arguments into some kind of data request / post

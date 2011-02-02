@@ -11,6 +11,8 @@ import urllib
 import urllib2
 from cookielib import FileCookieJar
 
+import webbrowser
+
 from xml.dom.minidom import parseString
 from HTMLParser import HTMLParser
 
@@ -38,10 +40,10 @@ envExamples = {
     }
 
 # Not sure what this is
-activeTempMax = '1000'
+searchTempMax = '1000'
 
-loginPage     = '/login.jsp'
-activeXmlPage = "/sr/jira.issueviews:searchrequest-xml/" + activeId + "/SearchRequest-" + activeId + ".xml?tempMax=" + activeTempMax
+loginPage         = '/login.jsp'
+commentAssignPage = '/secure/CommentAssignIssue.jspa'
 
 approveAction    = '161'
 disapproveAction = '171'
@@ -127,36 +129,33 @@ def removeEmpties(l):
 
 ### Low level procedures to GET and POST data
 
-def doLogin(continueUrl=None):
+def doLogin(continuePage=None):
     values = {
         'os_username': jiraUser,
         'os_password': jiraPass,
         'os_cookie':   'true'
         }
 
-    if continueUrl != None:
-        values['os_destination'] = continueUrl
+    if continuePage != None:
+        values['os_destination'] = continuePage
 
     data = urllib.urlencode(values)
     response = opener.open(jiraPath + loginPage, data)
     return response
 
-def doPost(url, data):
+def doPost(page, data):
     global loggedIn
 
     if not loggedIn:
         loggedIn = True
         doLogin() # did it actually work?
 
-    response = opener.open(url, data)
+    response = opener.open(jiraPath + page, data)
     return response.read()
 
-def doPostValues(url, values):
+def doPostValues(page, values):
     data = urllib.urlencode(values)
-    return doPost(url, data)
-
-def doPathPostValues(url, values):
-    return doPostValues(jiraPath + url, values)
+    return doPost(page, data)
 
 def getPage(page):
     global loggedIn
@@ -178,8 +177,11 @@ def getPage(page):
 def getIssueXml(j):
     return getPage("/si/jira.issueviews:issue-xml/" + j + "/" + j + ".xml")
 
+def getSearchXml(j):
+    return getPage("/sr/jira.issueviews:searchrequest-xml/" + j + "/SearchRequest-" + j + ".xml?tempMax=" + searchTempMax)
+
 def getActiveXml():
-    return getPage(activeXmlPage)
+    return getSearchXml(activeId)
 
 
 ### Low level data item extraction
@@ -278,9 +280,9 @@ def issueOneLinerFields(item):
     lines = [
         'component',
         'due',
-        'version', 'fixVersion',
+        'version',  'fixVersion',
         'reporter', 'assignee',
-        'created', 'updated'
+        'created',  'updated',
         'environment'
         ]
     maxn = max(map(len, lines))
@@ -328,6 +330,10 @@ def getIssueEssentials(j):
     s = '\n\n'.join(partsLeft)
     return '\n' + s + '\n'
 
+def getSearchEssential(j):
+    items = xmlItems(getSearchXml(j))
+    return '\n'.join(map(issueSmallTagLine, items))
+
 def getActiveTitles():
     items = xmlItems(getActiveXml())
     return '\n'.join(map(issueSmallTagLine, items))
@@ -364,7 +370,7 @@ def issueApproved(j, comment):
         'Approved':     'Approved'
         }
 
-    doPathPostValues('/secure/CommentAssignIssue.jspa', values)
+    doPostValues(commentAssignPage, values)
 
 def issueDisapproved(j, comment):
 
@@ -386,7 +392,13 @@ def issueDisapproved(j, comment):
         'Disapproved':  'Disapproved'
         }
 
-    doPathPostValues('/secure/CommentAssignIssue.jspa', values)
+    doPostValues(commentAssignPage, values)
+
+
+### web
+
+def doWebCreate(proj):
+    webbrowser.open(jiraPath + '/secure/CreateIssueDetails.jspa?pid=' + proj)
 
 
 ### Help text creation
@@ -410,7 +422,8 @@ def getHelpText(problem):
          'Approve the issue, optionally supplying a comment'),
         None,
         ('jirate post $url $postdata',
-         'Performs login, then does a POST request to the url')
+         'Ensures login, then does a POST request to the page,\n'
+         '\teg. jirate post /secure/CommentAssignIssue.jspa assignee=john.smith&Disapproved=Disapproved& ...and so on...')
         ]
     commandsTodo = [
         ('jirate investigate $issue [$comment]', ''),
@@ -418,14 +431,15 @@ def getHelpText(problem):
         ('jirate implement   $issue [$comment]', ''),
         ('jirate implemented $issue [$comment]', ''),
         ('jirate disapprove  $issue [$comment]', ''),
-         None,
+        None,
         ('jirate comment $issue $comment', ''),
         ('jirate attach  $issue ($filepath | $url) [$comment]', ''),
-         None,
+        None,
         ('jirate filter    $filter [-n 10]', ''),
         ('jirate filterxml $filter [-n 10]', ''),
-         None,
-        ('jirate webcreate $project  (opens URL for creating issues in web browser)', '')
+        None,
+        ('jirate webcreate $project',
+         'Opens the URL for creating issues for the project in a web browser')
         ]
     commandsOutOfScope = [
         ('jirate create $project (opens editor for editing an "issue spec")', ''),
@@ -457,12 +471,15 @@ def getOutput():
     problem = None
     action  = lookor(sys.argv, 1, None)
     argMins = {
-        'issue': 1,
-        'issuexml': 1,
-        'active': 0,
-        'approve': 1,
+        'issue':      1,
+        'issuexml':   1,
+        'search':     1,
+        'searchxml':  1,
+        'active':     0,
+        'webcreate':  1,
+        'approve':    1,
         'disapprove': 1,
-        'post': 2
+        'post':       2
         }
 
     if action == None:
@@ -476,15 +493,21 @@ def getOutput():
 
     if (action in argMins) and not enoughArgs(action):
         problem = ('Not enough args supplied for action "' + action +
-                   '" (you supplied ' + str(len(sys.argv) - 2) + ' but it needs ' + str(argMins[action]))
+                   '" (you supplied ' + str(len(sys.argv) - 2) + ' but it needs ' + str(argMins[action]) + ')')
         action  = 'help'
 
     if action == 'issue':
         rv = getIssueEssentials(sys.argv[2])
     elif action == 'issuexml':
         rv = getIssueXml(sys.argv[2])
+    elif action == 'search':
+        rv = getSearchEssential(sys.argv[2])
+    elif action == 'searchxml':
+        rv = getSearchXml(sys.argv[2])
     elif action == 'active':
         rv = getActiveTitles()
+    elif action == 'webcreate':
+        doWebCreate(sys.argv[2])
     elif action == 'approve':
         issueApproved(sys.argv[2], lookor(sys.argv, 3, ''))
     elif action == 'disapprove':
@@ -549,4 +572,5 @@ def main():
     if text != '':
         print text
 
-main()
+if __name__ == "__main__":
+    main()

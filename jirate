@@ -1,53 +1,60 @@
 #!/usr/bin/python
 
 import string
+
 import os
-import sys
-import subprocess
-import urllib
 import stat
+
+import sys
+
+import urllib
+import urllib2
+from cookielib import FileCookieJar
+
 from xml.dom.minidom import parseString
 from HTMLParser import HTMLParser
+
 
 # Todo
 # ----
 # > Support for multiple version and fixVersions
 # > Error handling
 # > Try action before doing login
-# > Use urllib instead of wget
 # > "Not modified" cacheing
 # > Work out fixVersions id
-# > Ensure actions are properly escaped, especially for 'post' and 'filter'
+
 
 jiratePath = os.path.expanduser('~/.jirate')
 jirateCookiePath = jiratePath + '/cookies.txt'
 
-jiraPath = None
-jiraUser = None
-jiraPass = None
-
 # TODO: programmatically determine these values
 versionIds = { 'jade': '10954' }
 activeId = '10041'
-
-# Not sure what this is
-activeTempMax = '1000'
-
-loginUrl     = None
-activeXmlUrl = None
-
-approveAction    = '161'
-disapproveAction = '171'
-
-fixedResolution = '1'
-
-loggedIn = False
 
 envExamples = {
     'JIRATE_HOST': 'http://jira',
     'JIRATE_USER': 'john.smith',
     'JIRATE_PASS': 'hunter2'
     }
+
+# Not sure what this is
+activeTempMax = '1000'
+
+loginPage     = '/login.jsp'
+activeXmlPage = "/sr/jira.issueviews:searchrequest-xml/" + activeId + "/SearchRequest-" + activeId + ".xml?tempMax=" + activeTempMax
+
+approveAction    = '161'
+disapproveAction = '171'
+
+fixedResolution = '1'
+
+httpOpener = None
+
+jiraPath = None
+jiraUser = None
+jiraPass = None
+
+loggedIn = False
 
 
 ### Library code
@@ -108,10 +115,10 @@ def checkCount(minN=None, maxN=None):
 
     return checker
 
-zero       = checkCount(0, 0)
-optional   = checkCount(0, 1)
-one        = checkCount(1, 1)
-oneToMany  = checkCount(1)
+zero      = checkCount(0, 0)
+optional  = checkCount(0, 1)
+one       = checkCount(1, 1)
+oneToMany = checkCount(1)
 
 
 def removeEmpties(l):
@@ -121,35 +128,58 @@ def removeEmpties(l):
 ### Low level procedures to GET and POST data
 
 def doLogin(continueUrl=None):
-    return subprocess.Popen(["wget", "-q", "-O", "-", "--save-cookies", jirateCookiePath, "--keep-session-cookies", "--post-data='os_username=" + jiraUser + "&os_password=" + jiraPass + "&os_cookie=true'", loginUrl], stdout=subprocess.PIPE).communicate()[0]
+    values = {
+        'os_username': jiraUser,
+        'os_password': jiraPass,
+        'os_cookie':   'true'
+        }
 
-def doPost(url, post):
+    if continueUrl != None:
+        values['os_destination'] = continueUrl
+
+    data = urllib.urlencode(values)
+    response = opener.open(jiraPath + loginPage, data)
+    return response
+
+def doPost(url, data):
     global loggedIn
 
     if not loggedIn:
         loggedIn = True
-        doLogin()
+        doLogin() # did it actually work?
 
-    p = subprocess.Popen("wget -q -O - --load-cookies " + jirateCookiePath + " --post-data='" + post + "' " + url + " >/dev/null 2>/dev/null", shell=True)
-    sts = os.waitpid(p.pid, 0)[1]
+    response = opener.open(url, data)
+    return response.read()
 
-def getPage(url):
+def doPostValues(url, values):
+    data = urllib.urlencode(values)
+    return doPost(url, data)
+
+def doPathPostValues(url, values):
+    return doPostValues(jiraPath + url, values)
+
+def getPage(page):
     global loggedIn
 
-    if not loggedIn:
-        loggedIn = True
-        return doLogin()
+    response = opener.open(jiraPath + page)
 
-    return subprocess.Popen(["wget", "-q", "-O", "-", "--load-cookies", jirateCookiePath, url], stdout=subprocess.PIPE).communicate()[0]
+    if response.info().getsubtype() != 'xml':
+        response = doLogin()
+        if response.info().getsubtype() != 'xml':
+            fail('Login for page failed: ' + page)
+        else:
+            loggedIn = True
+
+    return response.read()
 
 
 ### Higher level data getters
 
 def getIssueXml(j):
-    return getPage(jiraPath + "/si/jira.issueviews:issue-xml/" + j + "/" + j + ".xml")
+    return getPage("/si/jira.issueviews:issue-xml/" + j + "/" + j + ".xml")
 
 def getActiveXml():
-    return getPage(activeXmlUrl)
+    return getPage(activeXmlPage)
 
 
 ### Low level data item extraction
@@ -305,47 +335,58 @@ def getActiveTitles():
 
 ### Post actions
 
+def getFixVersionId(f):
+    v = lookor(versionIds, f, None)
+    if v == None:
+        fail('Unknown fixVersion ' + f + ' - please insert the id in the versionIds table')
+    return v
+
 def issueApproved(j, comment):
 
-    def getFixVersionId(f):
-        v = lookor(versionIds, f, None)
-        if v == None:
-            fail('Unknown fixVersion ' + f + ' - please insert the id in the versionIds table')
-        return v
-
-    # first we get the page so we know the issue id
-    item  = getIssueDocItem(j)
-    keyId = getDocItemKeyId(getIssueDocItem(j))
-
-    fixVs = dataItems(item, 'fixVersion')
-
-    # If we aren't able to lookup the IDs of every single fixVersion, we should fail
+    item    = getIssueDocItem(j)
+    fixVs   = dataItems(item, 'fixVersion')
     fixVids = map(getFixVersionId, fixVs)
 
+    # TODO: find out correct post format for 0 or multiple fixVersions
     if len(fixVids) != 1:
         fail('FIXME: script currently doesn\'t know what to do when number of fixVersions is not 1.\n' +
              'please fix the code and submit it to maintainer')
 
-    post = 'resolution=1&fixVersions=' + ','.join(fixVids) + '&assignee=' + jiraUser + '&comment=' + urllib.quote(comment, '') + '&commentLevel=&action=' + approveAction + '&id=' + keyId + '&viewIssueKey=&Approved=Approved'
+    values = {
+        'resolution':   fixedResolution,
+        'fixVersions':  ','.join(fixVids),   # is this correct?
+        'assignee':     jiraUser,
+        'comment':      comment,
+        'commentLevel': '',
+        'action':       approveAction,
+        'id':           getDocItemKeyId(item),
+        'viewIssueKey': '',
+        'Approved':     'Approved'
+        }
 
-    doPost(jiraPath + '/secure/CommentAssignIssue.jspa', post)
+    doPathPostValues('/secure/CommentAssignIssue.jspa', values)
 
 def issueDisapproved(j, comment):
 
-    # first we get the page so we know the issue id
-    item  = getIssueDocItem(j)
-    keyId = getDocItemKeyId(getIssueDocItem(j))
-
-    assignee = ''
+    item = getIssueDocItem(j)
 
     # need to fix assignee
+    assignee = ''
 
-    post = 'assignee=' + assignee + '&comment=' + urllib.quote(comment, '') + '&commentLevel=&action=' + disapproveAction + '&id=' + keyId + '&viewIssueKey=&Disapproved=Disapproved'
-
-    print post
+    print 'todo'
     return
 
-    doPost(jiraPath + '/secure/CommentAssignIssue.jspa', post)
+    values = {
+        'assignee':     assignee,
+        'comment':      comment,
+        'commentLevel': '',
+        'action':       disapproveAction,
+        'id':           getDocItemKeyId(item),
+        'viewIssueKey': '',
+        'Disapproved':  'Disapproved'
+        }
+
+    doPathPostValues('/secure/CommentAssignIssue.jspa', values)
 
 
 ### Help text creation
@@ -364,8 +405,12 @@ def getHelpText(problem):
          'Prints a simple data output for the issue'),
         ('jirate issuexml $issue',
          'Prints the RSS XML for the issue'),
+        None,
         ('jirate approve     $issue [$comment]',
-         'Approve the issue, optionally supplying a comment')
+         'Approve the issue, optionally supplying a comment'),
+        None,
+        ('jirate post $url $postdata',
+         'Performs login, then does a POST request to the url')
         ]
     commandsTodo = [
         ('jirate investigate $issue [$comment]', ''),
@@ -380,8 +425,7 @@ def getHelpText(problem):
         ('jirate filter    $filter [-n 10]', ''),
         ('jirate filterxml $filter [-n 10]', ''),
          None,
-        ('jirate webcreate $project  (opens URL for creating issues in web browser)', ''),
-        ('jirate post $url $postdata  (performs login, then does POST request)', '')
+        ('jirate webcreate $project  (opens URL for creating issues in web browser)', '')
         ]
     commandsOutOfScope = [
         ('jirate create $project (opens editor for editing an "issue spec")', ''),
@@ -463,7 +507,6 @@ def envVarNotPresent(v):
 
 def setupVars():
     global jiraPath, jiraUser, jiraPass
-    global loginUrl, activeXmlUrl
 
     def makeExample(x):
         return 'eg. ' + x + '=' + envExamples[x]
@@ -480,9 +523,6 @@ def setupVars():
     jiraUser = os.environ[needed[1]]
     jiraPass = os.environ[needed[2]]
 
-    loginUrl     = jiraPath + '/login.jsp'
-    activeXmlUrl = jiraPath + "/sr/jira.issueviews:searchrequest-xml/" + activeId + "/SearchRequest-" + activeId + ".xml?tempMax=" + activeTempMax
-
 
 ### Setup up the cookie file
 
@@ -494,10 +534,15 @@ def setupDirs():
         open(jirateCookiePath, 'w').close()
     os.chmod(jirateCookiePath, stat.S_IREAD | stat.S_IWRITE)
 
+def setupCookieJar():
+    global httpOpener
+    cj = FileCookieJar(jirateCookiePath)
+    httpOpener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj))
 
 def main():
     setupVars()
     setupDirs()
+    setupCookieJar()
 
     text = getOutput()
 

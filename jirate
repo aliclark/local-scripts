@@ -9,7 +9,11 @@ import sys
 
 import urllib
 import urllib2
-from cookielib import FileCookieJar
+from cookielib import LWPCookieJar
+
+import time
+import tempfile
+import hashlib
 
 import webbrowser
 
@@ -26,8 +30,10 @@ from HTMLParser import HTMLParser
 # > Work out fixVersions id
 
 
-jiratePath = os.path.expanduser('~/.jirate')
+jiratePath       = os.path.expanduser('~/.jirate')
 jirateCookiePath = jiratePath + '/cookies.txt'
+jirateTmpPath    = os.path.expanduser('~/.jirate/tmp/')
+jirateCachePath  = os.path.expanduser('~/.jirate/cache/')
 
 # TODO: programmatically determine these values
 versionIds = { 'jade': '10954' }
@@ -51,6 +57,7 @@ disapproveAction = '171'
 fixedResolution = '1'
 
 httpOpener = None
+cookieJar  = None
 
 jiraPath = None
 jiraUser = None
@@ -127,6 +134,34 @@ def removeEmpties(l):
     return filter(lambda x: x != '', l)
 
 
+# Adapted from http://developer.yahoo.com/python/python-caching.html
+def cachePath(url):
+    m = hashlib.sha1()
+    m.update(url)
+    filename = m.hexdigest()
+    return os.path.join(jirateCachePath, filename)
+
+# Adapted from http://developer.yahoo.com/python/python-caching.html
+# Note: jirateCacheDir will slowly fill up over time.
+#       possibly make a 'jirate clearcache' command if this becomes an issue
+def cacheGet(url, max_age=5):
+    filepath = cachePath(url)
+
+    if os.path.exists(filepath):
+        if int(time.time()) - os.path.getmtime(filepath) < max_age:
+            return open(filepath).read()
+    return None
+
+# Adapted from http://developer.yahoo.com/python/python-caching.html
+def cacheSet(url, data):
+    filepath = cachePath(url)
+    fd, temppath = tempfile.mkstemp(dir=jirateTmpPath)
+    fp = os.fdopen(fd, 'w')
+    fp.write(data)
+    fp.close()
+    os.rename(temppath, filepath)
+
+
 ### Low level procedures to GET and POST data
 
 def doLogin(continuePage=None):
@@ -140,7 +175,11 @@ def doLogin(continuePage=None):
         values['os_destination'] = continuePage
 
     data = urllib.urlencode(values)
+
+    cookieJar.load()
     response = httpOpener.open(jiraPath + loginPage, data)
+    cookieJar.save()
+
     return response
 
 def doPost(page, data):
@@ -150,7 +189,10 @@ def doPost(page, data):
         loggedIn = True
         doLogin() # did it actually work?
 
+    cookieJar.load()
     response = httpOpener.open(jiraPath + page, data)
+    cookieJar.save()
+
     return response.read()
 
 def doPostVoid(page, data): doPost(page, data)
@@ -161,18 +203,28 @@ def doPostValues(page, values):
 
 def getPage(page):
     global loggedIn
+    url = jiraPath + page
 
-    response = httpOpener.open(jiraPath + page)
+    cdata = cacheGet(url)
+    if cdata != None:
+        return cdata
+
+    cookieJar.load()
+    response = httpOpener.open(url)
+    cookieJar.save()
 
     if response.info().getsubtype() != 'xml':
-        response = doLogin(page)
 
-        if response.info().getsubtype() != 'xml':
+        # response = doLogin(page)
+
+        if False and response.info().getsubtype() != 'xml':
             fail('Login for page failed: ' + page)
         else:
             loggedIn = True
+            cdata = response.read()
+            cacheSet(url, cdata)
 
-    return response.read()
+    return cdata
 
 
 ### Higher level data getters
@@ -442,7 +494,7 @@ def getHelpText(problem):
         ('jirate fields $issue',
          'List all of the element tag names that an issue has, one per line, with duplicates if an element occurs multiple times'),
         ('jirate values $issue $field',
-         'Print the values of all elements in the issue with name $field. One per line, possibly including blank lines. If the value contains a new line, it is replaced with the text "\n" (minus quotes), other "\" chars become "\\"'),
+         'Print the values of all elements in the issue with name $field. One per line, possibly including blank lines. If the value contains a new line, it is replaced with the text "\n" (minus quotes), other backslash chars become "\\\\"'),
         None,
         ('jirate investigate $issue [$comment]', ''),
         ('jirate investigatd $issue [$comment]', ''),
@@ -479,7 +531,8 @@ def getHelpText(problem):
             'USAGE:\n\n' +
             ''.join(map(commandExample, commands)) + 
             '\nTODO:\n\n' +
-            ''.join(map(commandExample, commandsTodo)))
+            ''.join(map(commandExample, commandsTodo)) +
+            problemStr)
 
 
 ### Turn the arguments into some kind of data request / post
@@ -564,10 +617,17 @@ def setupDirs():
         open(jirateCookiePath, 'w').close()
     os.chmod(jirateCookiePath, stat.S_IREAD | stat.S_IWRITE)
 
+    if not os.path.isdir(jirateCachePath):
+        os.mkdir(jirateCachePath, 0700)
+
+    if not os.path.isdir(jirateTmpPath):
+        os.mkdir(jirateTmpPath, 0700)
+
 def setupCookieJar():
-    global httpOpener
-    cj = FileCookieJar(jirateCookiePath)
-    httpOpener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj))
+    global httpOpener, cookieJar
+    cookieJar = LWPCookieJar(jirateCookiePath)
+    cookieJar.save()
+    httpOpener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookieJar))
 
 def main():
     setupVars()

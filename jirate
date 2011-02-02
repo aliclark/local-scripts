@@ -153,6 +153,8 @@ def doPost(page, data):
     response = httpOpener.open(jiraPath + page, data)
     return response.read()
 
+def doPostVoid(page, data): doPost(page, data)
+
 def doPostValues(page, values):
     data = urllib.urlencode(values)
     return doPost(page, data)
@@ -354,7 +356,7 @@ def getFixVersionId(f):
         fail('Unknown fixVersion ' + f + ' - please insert the id in the versionIds table')
     return v
 
-def issueApproved(j, comment):
+def issueApproved(j, comment=''):
 
     item    = getIssueDocItem(j)
     fixVs   = dataItems(item, 'fixVersion')
@@ -379,7 +381,7 @@ def issueApproved(j, comment):
 
     doPostValues(commentAssignPage, values)
 
-def issueDisapproved(j, comment):
+def issueDisapproved(j, comment=''):
 
     item = getIssueDocItem(j)
 
@@ -477,7 +479,7 @@ def getHelpText(problem):
             'USAGE:\n\n' +
             ''.join(map(commandExample, commands)) + 
             '\nTODO:\n\n' +
-            ''.join(map(commandExample, commandsTodo))
+            ''.join(map(commandExample, commandsTodo)))
 
 
 ### Turn the arguments into some kind of data request / post
@@ -487,15 +489,16 @@ def getOutput():
     problem = None
     action  = lookor(sys.argv, 1, None)
     argMins = {
-        'issue':      1,
-        'issuexml':   1,
-        'search':     1,
-        'searchxml':  1,
-        'active':     0,
-        'webcreate':  1,
-        'approve':    1,
-        'disapprove': 1,
-        'post':       2
+        'issue':      (1, getIssueEssentials),
+        'issuexml':   (1, getIssueXml),
+        'get':        (1, getPage),
+        'search':     (1, getSearchEssential),
+        'searchxml':  (1, getSearchXml),
+        'active':     (0, getActiveTitles),
+        'webcreate':  (1, doWebCreate),
+        'approve':    (1, issueApproved),
+        'disapprove': (1, issueDisapproved),
+        'post':       (2, doPostVoid)
         }
 
     if action == None:
@@ -503,38 +506,26 @@ def getOutput():
         problem = 'Please supply an action to perform'
 
     def enoughArgs(action):
-        if (len(sys.argv) - 2) < argMins[action]:
+        if (len(sys.argv) - 2) < argMins[action][0]:
             return False
         return True
 
     if (action in argMins) and not enoughArgs(action):
         problem = ('Not enough args supplied for action "' + action +
-                   '" (you supplied ' + str(len(sys.argv) - 2) + ' but it needs ' + str(argMins[action]) + ')')
+                   '" (you supplied ' + str(len(sys.argv) - 2) + ' but it needs ' + str(argMins[action][0]) + ')')
         action  = 'help'
 
-    if action == 'issue':
-        rv = getIssueEssentials(sys.argv[2])
-    elif action == 'issuexml':
-        rv = getIssueXml(sys.argv[2])
-    elif action == 'search':
-        rv = getSearchEssential(sys.argv[2])
-    elif action == 'searchxml':
-        rv = getSearchXml(sys.argv[2])
-    elif action == 'active':
-        rv = getActiveTitles()
-    elif action == 'webcreate':
-        doWebCreate(sys.argv[2])
-    elif action == 'approve':
-        issueApproved(sys.argv[2], lookor(sys.argv, 3, ''))
-    elif action == 'disapprove':
-        issueDisapproved(sys.argv[2], lookor(sys.argv, 3, ''))
-    elif action == 'post':
-        doPost(sys.argv[2], sys.argv[3])
-    elif action == 'help':
-        rv = getHelpText(problem)
+    if action == 'help':
+        return getHelpText(problem)
+
+    if action in argMins:
+        rv = argMins[action][1](*sys.argv[2:])
+        if rv == None:
+            rv = ''
+        return rv
     else:
         problem = 'Unknown command "' + action + '"'
-        rv = getHelpText(problem)
+        return getHelpText(problem)
 
     return rv
 

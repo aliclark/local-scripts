@@ -18,8 +18,8 @@ personal_dir  = personal_file | stat.S_IXUSR
 personal_exe  = personal_file | stat.S_IXUSR
 
 public_file = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH
-public_dir  = personal_file | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
-public_exe  = personal_file | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+public_dir  = public_file | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+public_exe  = public_file | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
 
 perms_file = personal_file
 perms_dir  = personal_dir

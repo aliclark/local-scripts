@@ -63,7 +63,7 @@ def process():
     if origb == '':
         origb = os.path.dirname(orig)
 
-    if origb[0] == '.' and (not hidden):
+    if origb[0] == '.' and (not hidden) and (not origb in ['.', '..']):
       continue
 
     if os.path.isdir(orig):

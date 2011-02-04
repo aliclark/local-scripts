@@ -48,7 +48,7 @@ def process():
         origb = origd
         origd = ''
 
-    if origb[0] == '.' and (not hidden):
+    if origb[0] == '.' and (not hidden) and (not origb in ['.', '..']):
       continue
 
     t1 = origb

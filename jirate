@@ -23,6 +23,7 @@ from HTMLParser import HTMLParser
 
 # Todo
 # ----
+# > Get login sessions and login redirects working again
 # > Support for multiple version and fixVersions
 # > Error handling
 # > Try action before doing login
@@ -182,12 +183,19 @@ def doLogin(continuePage=None):
 
     return response
 
+def loginQueryStr():
+    return 'os_username=' + urllib.quote(jiraUser, '') + '&os_password=' + urllib.quote(jiraPass, '')
+
 def doPost(page, data):
     global loggedIn
 
-    if not loggedIn:
-        loggedIn = True
-        doLogin() # did it actually work?
+#    if not loggedIn:
+#        loggedIn = True
+#        doLogin() # did it actually work?
+
+    if data != '':
+        data += '&'
+    data += loginQueryStr()
 
     cookieJar.load()
     response = httpOpener.open(jiraPath + page, data)
@@ -209,6 +217,12 @@ def getPage(page):
     if cdata != None:
         return cdata
 
+    if string.find(url, '?') == -1:
+        url += '?'
+    else:
+        url += '&'
+    url += loginQueryStr()
+
     cookieJar.load()
     response = httpOpener.open(url)
     cookieJar.save()
@@ -223,6 +237,8 @@ def getPage(page):
             loggedIn = True
             cdata = response.read()
             cacheSet(url, cdata)
+    else:
+        cdata = response.read()
 
     return cdata
 
@@ -233,7 +249,7 @@ def getIssueXml(j):
     return getPage("/si/jira.issueviews:issue-xml/" + j + "/" + j + ".xml")
 
 def getSearchXml(j):
-    return getPage("/sr/jira.issueviews:searchrequest-xml/" + j + "/SearchRequest-" + j + ".xml") #"?tempMax=" + searchTempMax)
+    return getPage("/sr/jira.issueviews:searchrequest-xml/" + j + "/SearchRequest-" + j + ".xml?tempMax=" + searchTempMax)
 
 def getActiveXml():
     return getSearchXml(activeId)

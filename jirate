@@ -23,12 +23,14 @@ from HTMLParser import HTMLParser
 
 # Todo
 # ----
-# > Get login sessions and login redirects working again
-# > Support for multiple version and fixVersions
+# > Fix login sessions and login redirects
+# > Support for multiple fixVersions
+# > Fix login checking
+# > Local "not modified" cacheing
 # > Error handling
-# > Try action before doing login
-# > "Not modified" cacheing
-# > Work out fixVersions id
+# > Programmatically determine fixVersion, filter and project IDs from name
+#   - failing that, allow user to input the ID manually, ie.
+#     jirate set spa 10140
 
 
 jiratePath       = os.path.expanduser('~/.jirate')
@@ -36,16 +38,41 @@ jirateCookiePath = jiratePath + '/cookies.txt'
 jirateTmpPath    = os.path.expanduser('~/.jirate/tmp/')
 jirateCachePath  = os.path.expanduser('~/.jirate/cache/')
 
+
 # TODO: programmatically determine these values
+#
+# Go to http://jira/secure/BrowseProjects.jspa?selectedCategory=all
+# key is on URL http://jira/browse/SPA
+# Go to http://jira/browse/SPA
+# Project ID is hidden in parts of the source as "pid=10140"
+#
+projectIds = {
+    'SkyPlayer Apps': '10140'
+}
+
+# TODO: programmatically determine these values
+#
+# to get a fixversion.
+# on the project look up <project key="SPA">
+# download page http://jira/browse/SPA#selectedTab=com.atlassian.jira.plugin.system.project%3Aversions-panel
+# for each <fixVersion>crow</fixVersion>
+# the url will be: http://jira/browse/SPA/fixforversion/10926
+#
+versionIds = {
+    'SPA': {
+        'jade': '10954'
+        }
+    }
+
+# TODO: programmatically determine these values
+#
+# go to http://jira/secure/ManageFilters.jspa?filterView=search, searching the filter name 'spa'
+# find one with that title, the link is http://jira/secure/IssueNavigator.jspa?mode=hide&requestId=10828
+#
 filterIds  = {
     'approving': '10826',
     'active':    '10827',
     'spa':       '10828'
-}
-
-# TODO: programmatically determine these values
-versionIds = {
-    'jade': '10954'
 }
 
 envExamples = {
@@ -425,6 +452,9 @@ def getFilterEssential(j, n=None):
 ### Post actions
 
 def getFixVersionId(f):
+    
+    fail('getFixVersionId: need project key too');
+
     v = lookor(versionIds, f, None)
     if v == None:
         fail('Unknown fixVersion ' + f + ' - please insert the id in the versionIds table')

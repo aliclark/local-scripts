@@ -37,17 +37,22 @@ jirateTmpPath    = os.path.expanduser('~/.jirate/tmp/')
 jirateCachePath  = os.path.expanduser('~/.jirate/cache/')
 
 # TODO: programmatically determine these values
-versionIds = { 'jade': '10954' }
-activeId = '10041'
+filterIds  = {
+    'approving': '10826',
+    'active':    '10827',
+    'spa':       '10828'
+}
+
+# TODO: programmatically determine these values
+versionIds = {
+    'jade': '10954'
+}
 
 envExamples = {
     'JIRATE_HOST': 'http://jira',
     'JIRATE_USER': 'john.smith',
     'JIRATE_PASS': 'hunter2'
     }
-
-# Not sure what this is
-searchTempMax = '1000'
 
 loginPage         = '/login.jsp'
 commentAssignPage = '/secure/CommentAssignIssue.jspa'
@@ -248,11 +253,11 @@ def getPage(page):
 def getIssueXml(j):
     return getPage("/si/jira.issueviews:issue-xml/" + j + "/" + j + ".xml")
 
-def getSearchXml(j):
-    return getPage("/sr/jira.issueviews:searchrequest-xml/" + j + "/SearchRequest-" + j + ".xml?tempMax=" + searchTempMax)
-
-def getActiveXml():
-    return getSearchXml(activeId)
+def getFilterXml(j, n=1000):
+    if not j in filterIds:
+        fail('Could not find filter ID')
+    idn = filterIds[j]
+    return getPage("/sr/jira.issueviews:searchrequest-xml/" + idn + "/SearchRequest-" + idn + ".xml?tempMax=" + str(n))
 
 
 ### Low level data item extraction
@@ -407,12 +412,13 @@ def getIssueEssentials(j):
     s = '\n\n'.join(partsLeft)
     return '\n' + s + '\n'
 
-def getSearchEssential(j):
-    items = xmlItems(getSearchXml(j))
-    return '\n'.join(map(issueSmallTagLine, items))
+def getFilterEssential(j, n=None):
+    if n != None:
+        xml = getFilterXml(j, n)
+    else:
+        xml = getFilterXml(j)
 
-def getActiveTitles():
-    items = xmlItems(getActiveXml())
+    items = xmlItems(xml)
     return '\n'.join(map(issueSmallTagLine, items))
 
 
@@ -490,28 +496,28 @@ def commandExample(c):
 def getHelpText(problem):
 
     commands = [
-        ('jirate issue    $issue',
-         'Prints a simple data output for the issue'),
-        ('jirate issuexml $issue',
-         'Prints the RSS XML for the issue. This is an alias for "jirate get /si/jira.issueviews:issue-xml/${issue}/${issue}.xml"'),
-        None,
-        ('jirate approve     $issue [$comment]',
-         'Approve the issue, optionally supplying a comment'),
-        None,
-        ('jirate post $url $postdata',
-         'Ensures login, then does a POST request to the page,\n'
-         '\teg. jirate post /secure/CommentAssignIssue.jspa assignee=john.smith&Disapproved=Disapproved& ...and so on...')
-        ]
-    commandsTodo = [
         ('jirate get $url',
          'Ensures login, then does a GET request to the page,\n'
          '\teg. jirate get /si/jira.issueviews:issue-xml/JOB-101/JOB-101.xml'),
         None,
-        ('jirate fields $issue',
-         'List all of the element tag names that an issue has, one per line, with duplicates if an element occurs multiple times'),
-        ('jirate values $issue $field',
-         'Print the values of all elements in the issue with name $field. One per line, possibly including blank lines. If the value contains a new line, it is replaced with the text "\n" (minus quotes), other backslash chars become "\\\\"'),
+        ('jirate filterxml $filter [$n]',
+         'Print the RSS feed for filter, limiting to $n entries. $n defaults to 1000'),
+        ('jirate filter    $filter [$n]',
+         'Print a simple data output for each item in the filter, limiting to $n entries. $n defaults to 1000'),
         None,
+        ('jirate issuexml $issue',
+         'Prints the RSS XML for the issue. This is an alias for "jirate get /si/jira.issueviews:issue-xml/${issue}/${issue}.xml"'),
+        ('jirate issue    $issue',
+         'Prints a simple data output for the issue'),
+        None,
+        ('jirate post $url $postdata',
+         'Ensures login, then does a POST request to the page,\n'
+         '\teg. jirate post /secure/CommentAssignIssue.jspa assignee=john.smith&Disapproved=Disapproved& ...and so on...'),
+        None,
+        ('jirate approve     $issue [$comment]',
+         'Approve the issue, optionally supplying a comment')
+        ]
+    commandsTodo = [
         ('jirate investigate $issue [$comment]', ''),
         ('jirate investigatd $issue [$comment]', ''),
         ('jirate implement   $issue [$comment]', ''),
@@ -521,16 +527,14 @@ def getHelpText(problem):
         ('jirate comment $issue $comment', ''),
         ('jirate attach  $issue ($filepath | $url) [$comment]', ''),
         None,
-        ('jirate filter    $filter [-n 10]', ''),
-        ('jirate filterxml $filter [-n 10]', ''),
-        None,
-        ('jirate search    $search [-n 10]', ''),
-        ('jirate searchxml $search [-n 10]', ''),
-        None,
         ('jirate webcreate $project',
          'Opens the URL for creating issues for the project in a web browser'),
         ('jirate create $project (opens editor for editing an "issue spec")', ''),
         None,
+        ('jirate fields $issue',
+         'List all of the element tag names that an issue has, one per line, with duplicates if an element occurs multiple times'),
+        ('jirate values $issue $field',
+         'Print the values of all elements in the issue with name $field. One per line, possibly including blank lines. If the value contains a new line, it is replaced with the text "\\n" (minus quotes), other backslash chars become "\\\\"'),
         ('jirate update $issue $field $value', '')
         ]
 
@@ -558,16 +562,15 @@ def getOutput():
     problem = None
     action  = lookor(sys.argv, 1, None)
     argMins = {
-        'issue':      (1, getIssueEssentials),
-        'issuexml':   (1, getIssueXml),
         'get':        (1, getPage),
-        'search':     (1, getSearchEssential),
-        'searchxml':  (1, getSearchXml),
-        'active':     (0, getActiveTitles),
+        'filterxml':  (1, getFilterXml),
+        'filter':     (1, getFilterEssential),
+        'issuexml':   (1, getIssueXml),
+        'issue':      (1, getIssueEssentials),
+        'post':       (2, doPostVoid),
         'webcreate':  (1, doWebCreate),
-        'approve':    (1, issueApproved),
         'disapprove': (1, issueDisapproved),
-        'post':       (2, doPostVoid)
+        'approve':    (1, issueApproved)
         }
 
     if action == None:

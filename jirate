@@ -278,13 +278,21 @@ def getPage(page):
 ### Higher level data getters
 
 def getIssueXml(j):
-    return getPage("/si/jira.issueviews:issue-xml/" + j + "/" + j + ".xml")
+    qj = urllib.quote(j, '')
+    return getPage("/si/jira.issueviews:issue-xml/" + qj + "/" + qj + ".xml")
 
 def getFilterXml(j, n=1000):
     if not j in filterIds:
         fail('Could not find filter ID')
-    idn = filterIds[j]
+    idnv = filterIds[j]
+    idn = urllib.quote(idnv, '')
+    n = int(n)
     return getPage("/sr/jira.issueviews:searchrequest-xml/" + idn + "/SearchRequest-" + idn + ".xml?tempMax=" + str(n))
+
+def getQueryXml(q, n=1000):
+    n = int(n)
+    qq = urllib.quote(q, '')
+    return getPage("/sr/jira.issueviews:searchrequest-xml/temp/SearchRequest.xml?jqlQuery=" + qq + "&tempMax=" + str(n))
 
 
 ### Low level data item extraction
@@ -448,6 +456,15 @@ def getFilterEssential(j, n=None):
     items = xmlItems(xml)
     return '\n'.join(map(issueSmallTagLine, items))
 
+def getQueryEssential(q, n=None):
+    if n != None:
+        xml = getQueryXml(q, n)
+    else:
+        xml = getQueryXml(q)
+
+    items = xmlItems(xml)
+    return '\n'.join(map(issueSmallTagLine, items))
+
 
 ### Post actions
 
@@ -530,14 +547,19 @@ def getHelpText(problem):
          'Ensures login, then does a GET request to the page,\n'
          '\teg. jirate get /si/jira.issueviews:issue-xml/JOB-101/JOB-101.xml'),
         None,
+        ('jirate queryxml  $query [$n]',
+         'Print the RSS feed for query, limiting to $n entries. $n defaults to 1000'),
+        ('jirate query     $query [$n]',
+         'Print a simple data output for each item in the query, limiting to $n entries. $n defaults to 1000'),
+        None,
         ('jirate filterxml $filter [$n]',
          'Print the RSS feed for filter, limiting to $n entries. $n defaults to 1000'),
         ('jirate filter    $filter [$n]',
          'Print a simple data output for each item in the filter, limiting to $n entries. $n defaults to 1000'),
         None,
-        ('jirate issuexml $issue',
+        ('jirate issuexml  $issue',
          'Prints the RSS XML for the issue. This is an alias for "jirate get /si/jira.issueviews:issue-xml/${issue}/${issue}.xml"'),
-        ('jirate issue    $issue',
+        ('jirate issue     $issue',
          'Prints a simple data output for the issue'),
         None,
         ('jirate post $url $postdata',
@@ -593,6 +615,8 @@ def getOutput():
     action  = lookor(sys.argv, 1, None)
     argMins = {
         'get':        (1, getPage),
+        'queryxml':   (1, getQueryXml),
+        'query':      (1, getQueryEssential),
         'filterxml':  (1, getFilterXml),
         'filter':     (1, getFilterEssential),
         'issuexml':   (1, getIssueXml),

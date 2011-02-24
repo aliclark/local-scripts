@@ -41,7 +41,7 @@ jirateCachePath  = os.path.expanduser('~/.jirate/cache/')
 
 # TODO: programmatically determine these values
 #
-# Go to http://jira/secure/BrowseProjects.jspa?selectedCategory=all
+# Go to http://jira/secure/BrowseProjects.jspa
 # key is on URL http://jira/browse/SPA
 # Go to http://jira/browse/SPA
 # Project ID is hidden in parts of the source as "pid=10140"
@@ -70,10 +70,25 @@ versionIds = {
 # find one with that title, the link is http://jira/secure/IssueNavigator.jspa?mode=hide&requestId=10828
 #
 filterIds  = {
+    'created':   '10830',
     'approving': '10826',
     'active':    '10827',
     'spa':       '10828'
 }
+
+# Temprorary
+projectKeys = {
+    'jade': 'SPA'
+}
+
+
+# http://jira/plugins/servlet/streams?key=10140&os_authType=basic
+# http://jira/plugins/servlet/streams?filterUser=USERNAME&os_authType=basic
+
+# jirate activity project myproj     10
+# jirate activity user    john.smith 10
+
+
 
 envExamples = {
     'JIRATE_HOST': 'http://jira',
@@ -469,13 +484,18 @@ def getQueryEssential(q, n=None):
 ### Post actions
 
 def getFixVersionId(f):
-    
-    fail('getFixVersionId: need project key too');
 
-    v = lookor(versionIds, f, None)
-    if v == None:
+    key = projectKeys[f]
+
+    v1 = lookor(versionIds, key, None)
+    if v1 == None:
+        fail('Unknown fixVersion projectKey' + key + ' - please insert the id in the versionIds table')
+
+    v2 = lookor(v1, f, None)
+    if v2 == None:
         fail('Unknown fixVersion ' + f + ' - please insert the id in the versionIds table')
-    return v
+
+    return v2
 
 def issueApproved(j, comment=''):
 
@@ -527,8 +547,8 @@ def issueDisapproved(j, comment=''):
 
 ### web
 
-def doWebCreate(proj):
-    webbrowser.open(jiraPath + '/secure/CreateIssueDetails.jspa?pid=' + proj)
+def doWebCreate():
+    webbrowser.open(jiraPath + '/secure/CreateIssue!default.jspa')
 
 
 ### Help text creation
@@ -566,6 +586,9 @@ def getHelpText(problem):
          'Ensures login, then does a POST request to the page,\n'
          '\teg. jirate post /secure/CommentAssignIssue.jspa assignee=john.smith&Disapproved=Disapproved& ...and so on...'),
         None,
+        ('jirate webcreate',
+         'Opens the URL for creating issues in a web browser'),
+        None,
         ('jirate approve     $issue [$comment]',
          'Approve the issue, optionally supplying a comment')
         ]
@@ -579,8 +602,6 @@ def getHelpText(problem):
         ('jirate comment $issue $comment', ''),
         ('jirate attach  $issue ($filepath | $url) [$comment]', ''),
         None,
-        ('jirate webcreate $project',
-         'Opens the URL for creating issues for the project in a web browser'),
         ('jirate create $project (opens editor for editing an "issue spec")', ''),
         None,
         ('jirate fields $issue',
@@ -622,7 +643,7 @@ def getOutput():
         'issuexml':   (1, getIssueXml),
         'issue':      (1, getIssueEssentials),
         'post':       (2, doPostVoid),
-        'webcreate':  (1, doWebCreate),
+        'webcreate':  (0, doWebCreate),
         'disapprove': (1, issueDisapproved),
         'approve':    (1, issueApproved)
         }

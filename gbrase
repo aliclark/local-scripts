@@ -36,9 +36,20 @@ blist = Popen(["git", "branch"], stdout=PIPE).communicate()[0]
 
 (others, current) = split_branches(blist)
 
+
+dopop = False
+status = Popen(["git", "status"], stdout=PIPE).communicate()[0]
+
+if not status.count('working directory clean'):
+    runcmd('git stash save')
+    dopop = True
+
 for o in others:
     runcmd('git checkout ' + o)
     runcmd('git-p4 rebase')
 
 runcmd('git checkout ' + current)
 runcmd('git-p4 rebase')
+
+if dopop:
+    runcmd('git stash pop')

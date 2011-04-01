@@ -13,7 +13,10 @@ def read_line():
     return (s, (te - ts))
 
 while True:
-    (s, t) = read_line()
-    if len(s) == 0:
+    try:
+        (s, t) = read_line()
+        if len(s) == 0:
+            break
+        sys.stdout.write(str(t) + '| ' + s)
+    except:
         break
-    sys.stdout.write(str(t) + '| ' + s)

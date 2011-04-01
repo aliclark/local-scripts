@@ -38,9 +38,12 @@ blist = Popen(["git", "branch"], stdout=PIPE).communicate()[0]
 
 
 dopop = False
-status = Popen(["git", "status"], stdout=PIPE).communicate()[0]
+status = Popen(["git", "status", "-s"], stdout=PIPE).communicate()[0]
 
-if not status.count('working directory clean'):
+if status:
+    print 'Please do a git stash'
+    sys.exit(0)
+
     runcmd('git stash save')
     dopop = True
 

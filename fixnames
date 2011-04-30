@@ -58,7 +58,8 @@ def process():
         doloop = False
         t1 = f
         f = f.replace(' ', '-').replace(',', '-').replace('(', '-').replace(')', '-').replace('--', '-').replace('_', '-')
-        f = string.lower(f).replace("'", '').replace('"', '').replace('-.', '.').replace('!', '')
+        f = string.lower(f).replace("'", '').replace('"', '').replace('-.', '.').replace('!', '').replace('\n', '')
+        f = f.replace('\xe2\x80\x99', '')
 
     newf = os.path.join(origd, f)
 

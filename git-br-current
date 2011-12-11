@@ -8,7 +8,7 @@ import os
 def split_branches(bl):
     lines = string.split(bl, '\n')
     others = []
-    current = None
+    current = ''
 
     for l in lines:
         if not l:
@@ -17,10 +17,6 @@ def split_branches(bl):
             current = l[2:]
         else:
             others.append(l[2:])
-
-    if current == None:
-        print 'eek could not find current branch!'
-        sys.exit(1)
 
     return (others, current)
 

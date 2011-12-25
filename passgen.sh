@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/bin/sh
 
-if [[ $# = 0 ]]; then
+if [ $# = 0 ]; then
     numc=12
 else
     numc=$1

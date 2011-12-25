@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # User is advised to run `apt-get update` before this script
 # and `apt-get autoclean`, `apt-get autoremove` after it.

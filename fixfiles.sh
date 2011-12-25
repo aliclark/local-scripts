@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 for f in ./*; do
     ext=`echo "$f" | awk -F . '{if (NF>1) {print $NF}}'`

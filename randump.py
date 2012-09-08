@@ -1,43 +1,94 @@
 #!/usr/bin/python
 
+from __future__ import print_function
+
 import sys
-import argparse
+# TODO: use more widely available alternative eg. getopt
+#import argparse
+import math
 
-def base95(f, c, n, p):
-  s = ''
+rand_stream = None
 
-  if p:
-    pc = ' '
-  else:
-    pc = ''
+def xrand_stream_nb(b):
+  global rand_stream
 
-  for i in range(n):
-    while True:
-      d = f.read((c - len(s)) * 3) # discard roughly 2/3
-      s += ''.join(filter(lambda x: (ord(x) >= ord(' ')) and (ord(x) <= ord('~')), d))
+  savedn = 0
+  savedv = 0
+  x = None
+  y = 0
+  mask = (2 ** b) - 1
 
-      if len(s) >= c:
-        print ''.join(map(lambda x: pc + x, s[:c]))
-        s = s[c:]
+  while True:
+    while savedn >= b:
+      y = savedv & mask
+      savedv >>= b
+      savedn  -= b
+      yield y
+
+    if rand_stream == None:
+      rand_stream = open('/dev/random', 'rb')
+
+    try:
+      x = rand_stream.read(int(math.ceil((b - savedn) / 8.)))
+    except:
+      x = ''
+
+    if len(x) == 0:
+      try:
+        rand_stream.close()
+      finally:
+        rand_stream = None
+        raise EOFError('EOS')
+
+    while len(x) >= 1:
+      savedv <<= 8
+      savedv |= ord(x[0])
+      savedn += 8
+      x = x[1:]
+
+def xrand_stream_n(l, t=None):
+  if t == None:
+    t = l
+    l = 0
+
+  if t <= l:
+    return
+
+  n = t - l
+  i = 0
+  while 2**i < n:
+    i += 1
+
+  s = xrand_stream_nb(i)
+  for x in s:
+    if x < n:
+      yield x + l
+
+def base(b, c, n=1, p=False):
+  txt = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+/!\"#$%&'()*,-.:;<=>?@[\\]^_`{|}~ "
+  s = xrand_stream_n(b)
+  pc = ' ' if p else ''
+  for i in xrange(n):
+    for j in xrange(c):
+      try:
+        sys.stdout.write(pc + txt[s.next()])
+        sys.stdout.flush()
+      except:
         break
 
-def base64(f, c, n, p):
-  chars = ['+', '/']
-  for i in range(26):
-    chars.append(chr(ord('a') + i))
-    chars.append(chr(ord('A') + i))
-  for i in range(10):
-    chars.append(chr(ord('0') + i))
+    sys.stdout.write('\n')
+    sys.stdout.flush()
 
-  if p:
-    pc = ' '
-  else:
-    pc = ''
-
-  for i in range(n):
-    print ''.join(map(lambda x: pc + chars[ord(x) & 63], f.read(c)))
+class mkargs(object):
+  def __init__(self):
+    self.pad = False
+    self.bytes = 48 #32
+    self.lines = 1
+    #self.base = 64
+    self.base = 95
 
 def main():
+  """
   parser = argparse.ArgumentParser()
   parser.add_argument('-p', '--pad',   action='store_true', default=False)
   parser.add_argument('-c', '--bytes', type=int, default=12)
@@ -45,20 +96,19 @@ def main():
   parser.add_argument('-b', '--base',  type=int, default=95)
 
   args = parser.parse_args()
+  """
 
-  if args.base != 95 and args.base != 64:
-    print 'unknown base, use 64 or 95 (default)'
+  args = mkargs()
+
+  if args.base < 0:
+    print('minimum base is 0')
     sys.exit(1)
 
-  f = open('/dev/random', 'rb')
+  if args.base > 95:
+    print('maximum base is 95')
+    sys.exit(1)
 
-  if args.base == 95:
-    base95(f, args.bytes, args.lines, args.pad)
-
-  if args.base == 64:
-    base64(f, args.bytes, args.lines, args.pad)
-
-  f.close()
+  base(args.base, args.bytes, args.lines, args.pad)
 
 if __name__ == '__main__':
   main()

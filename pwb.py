@@ -20,7 +20,10 @@ def split_branches(bl):
 
     return (others, current)
 
-proc = Popen(["git", "branch"], stdout=PIPE, stderr=open('/dev/null', 'w'))
+if not os.access("/usr/bin/git", os.X_OK):
+    sys.exit(1)
+
+proc = Popen(["/usr/bin/git", "branch"], stdout=PIPE, stderr=open('/dev/null', 'w'))
 blist = proc.communicate()[0]
 
 if proc.returncode == 0:

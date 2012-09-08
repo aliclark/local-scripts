@@ -1,5 +1,10 @@
 #!/bin/sh
 
+if [ ! -x /usr/bin/emacs ]; then
+    vim
+    exit
+fi
+
 if [ "$TERM" = "screen" ]; then
     /usr/bin/emacs -nw $@
 elif [ "$TERM" = "xterm" ]; then

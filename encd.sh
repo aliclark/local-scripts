@@ -20,5 +20,5 @@ if [ -d $HOME/$dir ]; then
 fi
 
 mkdir $HOME/$dir
-cd $HOME && gpg -d $stagingdir/crypt/$dir.key.gpg | encfs -S -o allow_root $stagingdir/crypt/${dir}_encfs $HOME/$dir
+cd $HOME && gpg --homedir $HOME/.gnupg-stub -d $stagingdir/crypt/$dir.key.gpg | encfs -S -o allow_root $stagingdir/crypt/${dir}_encfs $HOME/$dir
 

@@ -6,13 +6,13 @@ editor=vi
 [ -x /usr/bin/vim ] && editor=vim
 
 if [ "$TERM" = "screen" ]; then
-    /usr/bin/$editor $@
+    /usr/bin/$editor "$@"
 elif [ "$TERM" = "xterm" ]; then
-    /usr/bin/$editor $@
+    /usr/bin/$editor "$@"
 elif [ -n "$DISPLAY" ]; then
-    xterm -e /usr/bin/$editor $@
+    xterm -e /usr/bin/$editor "$@"
 else
     # change this to gvim
-    /usr/bin/$editor $@
+    /usr/bin/$editor "$@"
 fi
 

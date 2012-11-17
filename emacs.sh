@@ -6,12 +6,12 @@ if [ ! -x /usr/bin/emacs ]; then
 fi
 
 if [ "$TERM" = "screen" ]; then
-    /usr/bin/emacs -nw $@
+    /usr/bin/emacs -nw "$@"
 elif [ "$TERM" = "xterm" ]; then
-    /usr/bin/emacs -nw $@
+    /usr/bin/emacs -nw "$@"
 elif [ -n "$DISPLAY" ]; then
-    xterm -e /usr/bin/emacs -nw $@
+    xterm -e /usr/bin/emacs -nw "$@"
 else
-    /usr/bin/emacs $@
+    /usr/bin/emacs "$@"
 fi
 
